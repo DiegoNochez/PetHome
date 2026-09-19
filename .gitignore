@@ -1,0 +1,6 @@
+*.jar
+*.class
+errores.log
+.idea/
+out/
+*.iml
