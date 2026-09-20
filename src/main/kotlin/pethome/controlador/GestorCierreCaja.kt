@@ -42,6 +42,8 @@ class GestorCierreCaja {
         return eliminado
     }
 
+    fun cierresConFaltante(): List<CierreCaja> = cierres.filter { it.diferencia < -0.005 }
+
     /** Ingresos acumulados por método de pago, usados por el reporte financiero. */
     fun totalIngresosPorMetodo(): Triple<Double, Double, Double> {
         val efectivo = cierres.sumByDouble { it.efectivo }
