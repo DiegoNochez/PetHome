@@ -34,4 +34,12 @@ class GestorSeguimiento {
         if (!eliminado) LoggerErrores.registrar("Intento de eliminar un seguimiento inexistente (id=$id)")
         return eliminado
     }
+
+    fun proximosAVencer(dias: Int): List<Seguimiento> {
+        val hoy = LocalDate.now()
+        val limite = hoy.plusDays(dias.toLong())
+        return seguimientos.filter {
+            it.estado == EstadoSeguimiento.PENDIENTE && !it.fechaControl.isBefore(hoy) && !it.fechaControl.isAfter(limite)
+        }
+    }
 }

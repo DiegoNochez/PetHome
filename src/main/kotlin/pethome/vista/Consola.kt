@@ -20,7 +20,7 @@ object Consola {
         println("2. Recepcionista / Cajero")
         val rol = Validador.leerEntero("Selecciona tu rol: ", 1, 2)
         val nombre = Validador.leerTextoNoVacio("Nombre de usuario: ")
-        val correo = Validador.leerTextoNoVacio("Correo electronico: ")
+        val correo = Validador.leerCorreo("Correo electronico: ")
         return if (rol == 1) Administrador(nombre, correo) else Recepcionista(nombre, correo)
     }
 }

@@ -97,8 +97,9 @@ fun menuAdministrador(
         println("10. Marcar seguimiento como completado")
         println("11. Listar seguimientos pendientes")
         println("12. Ver reporte financiero")
+        println("13. Ver seguimientos proximos a vencer (7 dias)")
         println("0. Cerrar sesion")
-        val opcion = Validador.leerEntero("Selecciona una opcion: ", 0, 12)
+        val opcion = Validador.leerEntero("Selecciona una opcion: ", 0, 13)
         try {
             when (opcion) {
                 1 -> registrarCierreCaja(gestorCaja, usuario.nombre)
@@ -113,6 +114,7 @@ fun menuAdministrador(
                 10 -> completarSeguimiento(gestorSeguimiento)
                 11 -> listarSeguimientosPendientes(gestorSeguimiento)
                 12 -> println(gestorReportes.generarResumen())
+                13 -> listarProximosAVencer(gestorSeguimiento)
                 0 -> salir = true
             }
         } catch (e: Exception) {
@@ -260,3 +262,14 @@ fun listarSeguimientosPendientes(gestor: GestorSeguimiento) {
     }
     lista.forEach { println("  " + it.resumen()) }
 }
+
+fun listarProximosAVencer(gestor: GestorSeguimiento) {
+    println("\n--- Seguimientos proximos a vencer (7 dias) ---")
+    val lista = gestor.proximosAVencer(7)
+    if (lista.isEmpty()) {
+        println("  (No hay seguimientos proximos a vencer en los proximos 7 dias)")
+        return
+    }
+    lista.forEach { println("  " + it.resumen()) }
+}
+

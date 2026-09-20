@@ -62,4 +62,16 @@ object Validador {
             }
         }
     }
+
+    fun leerCorreo(prompt: String): String {
+        while (true) {
+            print(prompt)
+            val correo = readLine()?.trim() ?: ""
+            if (correo.contains("@") && correo.contains(".") && correo.indexOf("@") < correo.lastIndexOf(".")) {
+                return correo
+            }
+            LoggerErrores.registrar("Correo invalido ingresado: '$correo'")
+            println("  > Correo invalido. Debe contener '@' y un dominio valido (ej. nombre@dominio.com).")
+        }
+    }
 }
