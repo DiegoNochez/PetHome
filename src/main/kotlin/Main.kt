@@ -54,8 +54,10 @@ fun menuRecepcionista(usuario: Recepcionista, gestorCaja: GestorCierreCaja, gest
         println("5. Generar credito fiscal")
         println("6. Listar creditos fiscales")
         println("7. Anular un credito fiscal")
+        println("8. Ver cierres de caja con faltante")
+        println("9. Ver creditos fiscales anulados")
         println("0. Cerrar sesion")
-        val opcion = Validador.leerEntero("Selecciona una opcion: ", 0, 7)
+        val opcion = Validador.leerEntero("Selecciona una opcion: ", 0, 9)
         try {
             when (opcion) {
                 1 -> registrarCierreCaja(gestorCaja, usuario.nombre)
@@ -65,6 +67,8 @@ fun menuRecepcionista(usuario: Recepcionista, gestorCaja: GestorCierreCaja, gest
                 5 -> generarCreditoFiscal(gestorCredito)
                 6 -> listarCreditosFiscales(gestorCredito)
                 7 -> anularCreditoFiscal(gestorCredito)
+                8 -> listarCierresConFaltante(gestorCaja)
+                9 -> listarCreditosAnulados(gestorCredito)
                 0 -> salir = true
             }
         } catch (e: Exception) {
@@ -98,8 +102,10 @@ fun menuAdministrador(
         println("11. Listar seguimientos pendientes")
         println("12. Ver reporte financiero")
         println("13. Ver seguimientos proximos a vencer (7 dias)")
+        println("14. Ver cierres de caja con faltante")
+        println("15. Ver creditos fiscales anulados")
         println("0. Cerrar sesion")
-        val opcion = Validador.leerEntero("Selecciona una opcion: ", 0, 13)
+        val opcion = Validador.leerEntero("Selecciona una opcion: ", 0, 15)
         try {
             when (opcion) {
                 1 -> registrarCierreCaja(gestorCaja, usuario.nombre)
@@ -115,6 +121,8 @@ fun menuAdministrador(
                 11 -> listarSeguimientosPendientes(gestorSeguimiento)
                 12 -> println(gestorReportes.generarResumen())
                 13 -> listarProximosAVencer(gestorSeguimiento)
+                14 -> listarCierresConFaltante(gestorCaja)
+                15 -> listarCreditosAnulados(gestorCredito)
                 0 -> salir = true
             }
         } catch (e: Exception) {
@@ -268,6 +276,26 @@ fun listarProximosAVencer(gestor: GestorSeguimiento) {
     val lista = gestor.proximosAVencer(7)
     if (lista.isEmpty()) {
         println("  (No hay seguimientos proximos a vencer en los proximos 7 dias)")
+        return
+    }
+    lista.forEach { println("  " + it.resumen()) }
+}
+
+fun listarCierresConFaltante(gestor: GestorCierreCaja) {
+    println("\n--- Cierres de caja con faltante ---")
+    val lista = gestor.cierresConFaltante()
+    if (lista.isEmpty()) {
+        println("  (No hay cierres con faltante registrados)")
+        return
+    }
+    lista.forEach { println("  " + it.resumen()) }
+}
+
+fun listarCreditosAnulados(gestor: GestorCreditoFiscal) {
+    println("\n--- Creditos fiscales anulados ---")
+    val lista = gestor.listarAnulados()
+    if (lista.isEmpty()) {
+        println("  (No hay creditos fiscales anulados)")
         return
     }
     lista.forEach { println("  " + it.resumen()) }

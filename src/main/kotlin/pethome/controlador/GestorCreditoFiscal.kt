@@ -45,6 +45,8 @@ class GestorCreditoFiscal {
         return eliminado
     }
 
+    fun listarAnulados(): List<CreditoFiscal> = creditos.filter { it.anulado }
+
     fun totalEmitidos(): Int = creditos.count { !it.anulado }
 
     fun ingresoTotal(): Double = creditos.filter { !it.anulado }.sumByDouble { it.total }
