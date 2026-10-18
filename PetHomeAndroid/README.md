@@ -61,3 +61,38 @@ app/src/main/java/com/premiercoders/pethome/
 ## Versiones
 Android Gradle Plugin 8.7.3 · Gradle 8.11.1 · Kotlin 2.0.21 · Compose BOM 2024.12.01 · minSdk 26 · targetSdk 35.
 Si Android Studio ofrece actualizar el Android Gradle Plugin, se puede posponer: el proyecto funciona con estas versiones.
+
+## Casos de prueba (Foro 1)
+
+Pruebas manuales realizadas en el emulador (Medium Phone API 37) para
+verificar los requisitos del Foro 1. Para repetirlas, usa las cuentas de
+prueba de la tabla de arriba.
+
+### Autenticación y registro
+| # | Caso | Pasos | Resultado esperado |
+|---|------|-------|--------------------|
+| 1 | Campos vacíos | Presionar **Ingresar** sin escribir nada | Mensaje en rojo debajo de correo y contraseña |
+| 2 | Correo inválido | Escribir `admin@pethome` | "Correo inválido" |
+| 3 | Contraseña incorrecta | `admin@pethome.com` + `hola` | "Contraseña incorrecta" |
+| 4 | Correo no registrado | `nadie@pethome.com` | "No existe una cuenta con ese correo" |
+| 5 | Contraseña débil | Registro con `abcdef` | "Debe incluir letras y números" |
+| 6 | Correo duplicado | Registro con `admin@pethome.com` | "Ya existe una cuenta con ese correo" |
+| 7 | Permisos por rol | Entrar como Recepción | Solo ve Cierre de Caja y Créditos Fiscales |
+
+### Módulos
+| # | Caso | Pasos | Resultado esperado |
+|---|------|-------|--------------------|
+| 8 | Monto inválido | Efectivo = `abc`, `-5` o `10.555` | Error debajo del campo; no se registra |
+| 9 | Fecha futura | Fecha de cierre posterior a hoy | "La fecha no puede ser futura" |
+| 10 | Faltante de caja | Contado menor que el total esperado | "Faltante de $X" en rojo |
+| 11 | IVA 13 % | Crédito con subtotal `50.00` | IVA $6.50, total $56.50 y correlativo siguiente |
+| 12 | Anular crédito | Botón **Anular** → confirmar | Queda tachado y no suma en Reportes |
+| 13 | Foto clínica | **Adjuntar foto** en una evidencia | Aparece la miniatura; al tocarla se amplía |
+| 14 | Días de control | Días = `0` o `400` | "Debe estar entre 1 y 365" |
+| 15 | Paciente vencido | Abrir Seguimiento | Luna aparece como "Vencido" en rojo |
+
+### Comportamiento general
+| # | Caso | Pasos | Resultado esperado |
+|---|------|-------|--------------------|
+| 16 | Rotación | Rotar el emulador con un formulario a medias | No se pierden los datos ni lo escrito |
+| 17 | Cerrar sesión | Cerrar sesión y presionar Atrás | No regresa al panel |
