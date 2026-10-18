@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Tema base de la ventana; los colores reales de la app se definen en Compose (vista/tema). -->
+    <style name="Theme.PetHome" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:statusBarColor">@color/teal_principal</item>
+    </style>
+</resources>
