@@ -141,3 +141,34 @@ del repositorio, con su propia rama y al menos un commit propio.
 - Migrar esta lógica a una app Android con Jetpack Compose.
 - Reemplazar las listas en memoria por Firebase Authentication + Firestore.
 - Implementar la interfaz gráfica basada en los mockups de la Etapa 1.
+## Etapa 3 — Foro 1: App Android con Jetpack Compose
+
+La lógica de esta consola se migró a una aplicación Android que está en la
+carpeta [`PetHomeAndroid/`](PetHomeAndroid/README.md). Se conservó la
+arquitectura MVC: el modelo y los gestores de la Etapa 2 se reutilizaron y la
+consola se reemplazó por pantallas en Jetpack Compose.
+
+| Requisito del Foro 1 | Cómo se cumple |
+|---|---|
+| Login / registro funcional | Pantallas de inicio de sesión y creación de cuenta con dos roles |
+| Módulo principal en Compose | Panel principal + Cierre de Caja, Créditos Fiscales, Evidencia Clínica, Seguimiento y Reportes |
+| Navegación entre pantallas | Navigation Compose con rutas protegidas por sesión y por rol |
+| Validación de formularios | Mensaje de error debajo de cada campo (correo, contraseña, montos, fechas) |
+
+### Cómo abrir cada parte del repositorio
+
+| Proyecto | Carpeta que se abre | Herramienta |
+|---|---|---|
+| Etapa 2 (consola) | raíz del repositorio | IntelliJ IDEA |
+| Etapa 3 (Android) | `PetHomeAndroid/` | Android Studio |
+
+> Importante: en Android Studio se debe abrir la carpeta `PetHomeAndroid`, no
+> la raíz, porque cada proyecto tiene su propio `settings.gradle.kts`.
+
+### Trabajo colaborativo — Etapa 3
+
+| Integrante | Rama | Aporte en el Foro 1 |
+|---|---|---|
+| Diego | `rama-diego` | Proyecto Android con Jetpack Compose (8 pantallas, navegación y validaciones) |
+| Jimmy | `rama-jimmy` | Documentación de la Etapa 3 en el README principal |
+| Nelson | `rama-nelson` | Documentación de los casos de prueba de la app Android |
