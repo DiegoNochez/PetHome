@@ -1,3 +1,10 @@
+
+## Entrega Foro 1 (Etapa 3)
+
+- **Video demostración:** [ver en YouTube](https://www.youtube.com/watch?v=x_vHNvn7KDI)
+- **Documento de investigación (APA 7):** [PetHome_Foro1_JetpackCompose_APA7.pdf](docs/PetHome_Foro1_JetpackCompose_APA7.pdf)
+- **Código fuente de la app Android:** [PetHomeAndroid/](PetHomeAndroid/)
+
 # Pet Home — Etapa 2: Desarrollo Base del Proyecto
 
 **Proyecto de Cátedra DSM941 · Equipo PremierCoders**
@@ -164,11 +171,3 @@ consola se reemplazó por pantallas en Jetpack Compose.
 
 > Importante: en Android Studio se debe abrir la carpeta `PetHomeAndroid`, no
 > la raíz, porque cada proyecto tiene su propio `settings.gradle.kts`.
-
-### Trabajo colaborativo — Etapa 3
-
-| Integrante | Rama | Aporte en el Foro 1 |
-|---|---|---|
-| Diego | `rama-diego` | Proyecto Android con Jetpack Compose (8 pantallas, navegación y validaciones) |
-| Jimmy | `rama-jimmy` | Documentación de la Etapa 3 en el README principal |
-| Nelson | `rama-nelson` | Documentación de los casos de prueba de la app Android |
