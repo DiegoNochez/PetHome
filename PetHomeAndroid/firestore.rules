@@ -1,0 +1,51 @@
+rules_version = '2';
+
+// Reglas de seguridad de Firestore para Pet Home (Foro 2).
+// Se copian en Firebase Console -> Firestore Database -> Reglas -> Publicar.
+// Todo lo que no esté permitido aquí queda bloqueado (no se usa modo de prueba).
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function autenticado() {
+      return request.auth != null;
+    }
+
+    function esDueno(uid) {
+      return autenticado() && request.auth.uid == uid;
+    }
+
+    // Rol del usuario que hace la petición, leído de su perfil.
+    // Lo usan las reglas de los módulos para permisos por rol.
+    function rolActual() {
+      return get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.rol;
+    }
+
+    function esAdmin() {
+      return autenticado() && rolActual() == 'ADMINISTRADOR';
+    }
+
+    // ---------- Perfiles del personal (autenticación) ----------
+    // Cada persona solo puede leer y crear SU propio perfil.
+    // Al crearlo, el rol tiene que ser RECEPCIONISTA: nadie puede
+    // registrarse como administrador desde la app.
+    // El rol solo se cambia desde la consola de Firebase.
+    match /usuarios/{uid} {
+      allow read: if esDueno(uid);
+
+      allow create: if esDueno(uid)
+        && request.resource.data.keys().hasOnly(['nombre', 'correo', 'rol', 'creadoEn'])
+        && request.resource.data.nombre is string
+        && request.resource.data.nombre.size() > 0
+        && request.resource.data.nombre.size() <= 80
+        && request.resource.data.correo == request.auth.token.email
+        && request.resource.data.rol == 'RECEPCIONISTA'
+        && request.resource.data.creadoEn == request.time;
+
+      allow update, delete: if false;
+    }
+
+    // ---------- Módulos de la app ----------
+    // Las reglas de cierres de caja, créditos fiscales, evidencias y
+    // seguimientos se agregan aquí (usar autenticado() y esAdmin()).
+  }
+}

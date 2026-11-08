@@ -11,14 +11,33 @@ arquitectura MVC y los mismos 5 módulos.
 2. Esperar a que termine **Gradle Sync** (la primera vez descarga dependencias, tarda varios minutos).
 3. Elegir un emulador o teléfono y presionar ▶ **Run 'app'**.
 
-Cuentas de prueba:
+> **Foro 2:** antes de compilar hay que configurar Firebase (ver la sección siguiente).
+> Las cuentas de prueba locales del Foro 1 ya no existen: el acceso es con Firebase.
 
-| Rol | Correo | Contraseña |
-|-----|--------|------------|
-| Administrador / MVZ | admin@pethome.com | admin123 |
-| Recepcionista / Cajero | recepcion@pethome.com | recep123 |
+## Configuración de Firebase (Foro 2)
+La app usa **Firebase Authentication** (correo/contraseña y Google) y **Cloud Firestore**.
+El archivo `app/google-services.json` contiene las claves del proyecto y **no se sube al
+repositorio** (está en `.gitignore`). Cada integrante debe:
 
-También se puede crear una cuenta nueva desde **"¿Personal nuevo? Crear cuenta"**.
+1. Pedir acceso al proyecto **PetHome** en [Firebase Console](https://console.firebase.google.com)
+   (rol Editor) y descargar `google-services.json` desde
+   **Configuración del proyecto → General → Tus apps → Pet Home Android**.
+2. Copiarlo en `PetHomeAndroid/app/google-services.json`.
+3. Registrar su propia huella **SHA-1** (necesaria para iniciar sesión con Google):
+   en la terminal de Android Studio ejecutar `./gradlew signingReport`, copiar el
+   SHA1 de la variante `debug` y agregarlo en **Tus apps → Add fingerprint**.
+4. Usar un emulador con **Google Play** y una cuenta de Google iniciada.
+
+### Roles
+- Toda cuenta nueva (registro o primer ingreso con Google) se crea en Firestore,
+  en `usuarios/{uid}`, con rol **RECEPCIONISTA**.
+- El rol **ADMINISTRADOR** se asigna solo desde la consola: Firestore → `usuarios` →
+  documento del usuario → cambiar el campo `rol`. Las reglas impiden que la app lo cambie.
+
+### Reglas de seguridad
+Las reglas están en [`firestore.rules`](firestore.rules) y se publican en
+**Firestore Database → Reglas**. Cada usuario solo puede leer y crear su propio perfil,
+no puede registrarse como administrador y todo lo no permitido queda bloqueado.
 
 ## Requisitos del Foro 1 → dónde están
 | Requisito | Implementación |
