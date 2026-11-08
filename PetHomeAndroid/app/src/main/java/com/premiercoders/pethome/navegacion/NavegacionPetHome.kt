@@ -1,6 +1,7 @@
 package com.premiercoders.pethome.navegacion
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -13,14 +14,17 @@ import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.PointOfSale
 import androidx.compose.material.icons.filled.ReceiptLong
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -28,6 +32,7 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.premiercoders.pethome.controlador.AutenticacionGoogle
 import com.premiercoders.pethome.controlador.PetHomeViewModel
 import com.premiercoders.pethome.modelo.Modulo
 import com.premiercoders.pethome.modelo.Usuario
@@ -72,6 +77,10 @@ fun Modulo.icono(): ImageVector = when (this) {
 /**
  * Grafo de navegación. Un solo ViewModel compartido por todas las pantallas,
  * así los datos registrados en un módulo se ven en el panel y en reportes.
+ *
+ * Foro 2: la navegación depende del estado de sesión de Firebase. Si hay una
+ * sesión guardada se entra directo al panel; al cerrar sesión se limpia toda
+ * la pila, así el botón Atrás no regresa a pantallas protegidas.
  */
 @Composable
 fun NavegacionPetHome(
@@ -86,19 +95,36 @@ fun NavegacionPetHome(
     }
     val volver: () -> Unit = { navController.popBackStack() }
 
+    // Credential Manager necesita el contexto de la Activity para mostrar
+    // el selector de cuentas de Google.
+    val contexto = LocalContext.current
+    val google = remember(contexto) { AutenticacionGoogle(contexto) }
+
     NavHost(navController = navController, startDestination = Rutas.LOGIN) {
         composable(Rutas.LOGIN) {
-            PantallaLogin(
-                onIniciarSesion = vm::iniciarSesion,
-                onExito = irAlPanel,
-                onIrARegistro = { navController.navigate(Rutas.REGISTRO) }
-            )
+            // Cuando Firebase confirma la sesión, se pasa al panel.
+            LaunchedEffect(vm.usuarioActual) { if (vm.usuarioActual != null) irAlPanel() }
+            if (vm.verificandoSesion) {
+                PantallaCargando()
+            } else {
+                PantallaLogin(
+                    cargando = vm.procesandoAuth,
+                    errorGeneral = vm.errorAuth,
+                    onIniciarSesion = vm::iniciarSesion,
+                    onIniciarConGoogle = { vm.iniciarSesionConGoogle(google) },
+                    onIrARegistro = { navController.navigate(Rutas.REGISTRO) },
+                    onLimpiarError = vm::limpiarErrorAuth
+                )
+            }
         }
         composable(Rutas.REGISTRO) {
+            LaunchedEffect(vm.usuarioActual) { if (vm.usuarioActual != null) irAlPanel() }
             PantallaRegistro(
+                cargando = vm.procesandoAuth,
+                errorGeneral = vm.errorAuth,
                 onRegistrar = vm::registrar,
-                onExito = irAlPanel,
-                onVolver = volver
+                onVolver = { vm.limpiarErrorAuth(); volver() },
+                onLimpiarError = vm::limpiarErrorAuth
             )
         }
         composable(Rutas.PANEL) {
@@ -108,7 +134,7 @@ fun NavegacionPetHome(
                     resumen = vm.resumen,
                     onAbrirModulo = { modulo -> navController.navigate(modulo.ruta()) },
                     onCerrarSesion = {
-                        vm.cerrarSesion()
+                        vm.cerrarSesion(google)
                         navController.navigate(Rutas.LOGIN) {
                             popUpTo(navController.graph.id) { inclusive = true }
                             launchSingleTop = true
@@ -174,5 +200,13 @@ private fun AccesoRestringido(modulo: Modulo, onVolver: () -> Unit) {
             Text("Tu rol no tiene permiso para usar este módulo.", textAlign = TextAlign.Center)
             Button(onClick = onVolver) { Text("Volver al panel") }
         }
+    }
+}
+
+/** Se muestra mientras se comprueba si Firebase recuerda una sesión abierta. */
+@Composable
+private fun PantallaCargando() {
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        CircularProgressIndicator()
     }
 }
