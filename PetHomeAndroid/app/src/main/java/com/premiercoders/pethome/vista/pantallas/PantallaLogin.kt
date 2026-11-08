@@ -3,6 +3,8 @@ package com.premiercoders.pethome.vista.pantallas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -16,14 +18,18 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Pets
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -46,30 +52,34 @@ import com.premiercoders.pethome.vista.tema.Teal
 import com.premiercoders.pethome.vista.tema.TealOscuro
 
 /**
- * Inicio de sesión. Valida el formato antes de consultar al controlador y
- * muestra el error de cada campo debajo de él.
+ * Inicio de sesión con Firebase Authentication (correo/contraseña o Google).
+ * Valida el formato antes de llamar a Firebase y muestra el error de cada
+ * campo debajo de él. La navegación al panel la hace el grafo cuando el
+ * ViewModel tiene un usuario, por eso esta pantalla no recibe `onExito`.
  *
- * @param onIniciarSesion devuelve el mensaje de error, o `null` si entró.
+ * @param cargando `true` mientras Firebase responde: deshabilita los botones.
+ * @param errorGeneral error devuelto por Firebase, ya traducido.
  */
 @Composable
 fun PantallaLogin(
-    onIniciarSesion: (String, String) -> String?,
-    onExito: () -> Unit,
-    onIrARegistro: () -> Unit
+    cargando: Boolean,
+    errorGeneral: String?,
+    onIniciarSesion: (String, String) -> Unit,
+    onIniciarConGoogle: () -> Unit,
+    onIrARegistro: () -> Unit,
+    onLimpiarError: () -> Unit
 ) {
     var correo by rememberSaveable { mutableStateOf("") }
     var contrasena by rememberSaveable { mutableStateOf("") }
     var errorCorreo by rememberSaveable { mutableStateOf<String?>(null) }
     var errorContrasena by rememberSaveable { mutableStateOf<String?>(null) }
-    var errorGeneral by rememberSaveable { mutableStateOf<String?>(null) }
 
     fun intentarIngreso() {
         errorCorreo = Validador.correo(correo)
         errorContrasena = if (contrasena.isBlank()) "La contraseña es obligatoria" else null
-        errorGeneral = null
+        onLimpiarError()
         if (errorCorreo != null || errorContrasena != null) return
-        val error = onIniciarSesion(correo, contrasena)
-        if (error == null) onExito() else errorGeneral = error
+        onIniciarSesion(correo, contrasena)
     }
 
     Box(
@@ -107,7 +117,7 @@ fun PantallaLogin(
                     Text("Iniciar sesión", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
                     CampoTexto(
                         valor = correo,
-                        onCambio = { correo = it; errorCorreo = null; errorGeneral = null },
+                        onCambio = { correo = it; errorCorreo = null; onLimpiarError() },
                         etiqueta = "Correo",
                         error = errorCorreo,
                         icono = Icons.Filled.Email,
@@ -115,7 +125,7 @@ fun PantallaLogin(
                     )
                     CampoTexto(
                         valor = contrasena,
-                        onCambio = { contrasena = it; errorContrasena = null; errorGeneral = null },
+                        onCambio = { contrasena = it; errorContrasena = null; onLimpiarError() },
                         etiqueta = "Contraseña",
                         error = errorContrasena,
                         icono = Icons.Filled.Lock,
@@ -125,10 +135,39 @@ fun PantallaLogin(
                     errorGeneral?.let {
                         Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
                     }
-                    Button(onClick = { intentarIngreso() }, modifier = Modifier.fillMaxWidth().height(48.dp)) {
-                        Text("Ingresar")
+                    Button(
+                        onClick = { intentarIngreso() },
+                        enabled = !cargando,
+                        modifier = Modifier.fillMaxWidth().height(48.dp)
+                    ) {
+                        if (cargando) {
+                            CircularProgressIndicator(modifier = Modifier.size(22.dp), strokeWidth = 2.dp)
+                        } else {
+                            Text("Ingresar")
+                        }
                     }
-                    TextButton(onClick = onIrARegistro, modifier = Modifier.align(Alignment.CenterHorizontally)) {
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        HorizontalDivider(Modifier.weight(1f))
+                        Text("  o  ", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        HorizontalDivider(Modifier.weight(1f))
+                    }
+
+                    OutlinedButton(
+                        onClick = { onLimpiarError(); onIniciarConGoogle() },
+                        enabled = !cargando,
+                        modifier = Modifier.fillMaxWidth().height(48.dp)
+                    ) {
+                        Icon(Icons.Filled.AccountCircle, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Continuar con Google")
+                    }
+
+                    TextButton(
+                        onClick = { onLimpiarError(); onIrARegistro() },
+                        enabled = !cargando,
+                        modifier = Modifier.align(Alignment.CenterHorizontally)
+                    ) {
                         Text("¿Personal nuevo? Crear cuenta")
                     }
                 }
@@ -140,9 +179,12 @@ fun PantallaLogin(
                 colors = CardDefaults.cardColors(containerColor = Color.White.copy(alpha = 0.15f))
             ) {
                 Column(Modifier.padding(14.dp)) {
-                    Text("Cuentas de prueba", color = Color.White, fontWeight = FontWeight.SemiBold)
-                    Text("Administrador: admin@pethome.com / admin123", color = Color.White, style = MaterialTheme.typography.bodySmall)
-                    Text("Recepción: recepcion@pethome.com / recep123", color = Color.White, style = MaterialTheme.typography.bodySmall)
+                    Text("Acceso del personal", color = Color.White, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "Las cuentas nuevas inician con rol de Recepción. El administrador de la clínica asigna el rol de Veterinario.",
+                        color = Color.White,
+                        style = MaterialTheme.typography.bodySmall
+                    )
                 }
             }
         }
@@ -153,6 +195,13 @@ fun PantallaLogin(
 @Composable
 private fun VistaPreviaLogin() {
     PetHomeTheme {
-        PantallaLogin(onIniciarSesion = { _, _ -> null }, onExito = {}, onIrARegistro = {})
+        PantallaLogin(
+            cargando = false,
+            errorGeneral = null,
+            onIniciarSesion = { _, _ -> },
+            onIniciarConGoogle = {},
+            onIrARegistro = {},
+            onLimpiarError = {}
+        )
     }
 }

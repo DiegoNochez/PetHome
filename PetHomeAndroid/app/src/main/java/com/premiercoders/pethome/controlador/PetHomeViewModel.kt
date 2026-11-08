@@ -4,14 +4,15 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import com.premiercoders.pethome.modelo.CierreCaja
 import com.premiercoders.pethome.modelo.CreditoFiscal
 import com.premiercoders.pethome.modelo.EvidenciaClinica
 import com.premiercoders.pethome.modelo.ResumenFinanciero
-import com.premiercoders.pethome.modelo.Rol
 import com.premiercoders.pethome.modelo.Seguimiento
 import com.premiercoders.pethome.modelo.Usuario
 import com.premiercoders.pethome.util.DatosInvalidosException
+import kotlinx.coroutines.launch
 import java.time.LocalDate
 
 /**
@@ -33,6 +34,18 @@ class PetHomeViewModel : ViewModel() {
 
     var usuarioActual by mutableStateOf<Usuario?>(null)
         private set
+
+    /** `true` mientras se revisa si Firebase recuerda una sesión abierta. */
+    var verificandoSesion by mutableStateOf(true)
+        private set
+
+    /** `true` mientras se espera la respuesta de Firebase (deshabilita botones). */
+    var procesandoAuth by mutableStateOf(false)
+        private set
+
+    /** Último error de login/registro, ya traducido al español. */
+    var errorAuth by mutableStateOf<String?>(null)
+        private set
     var cierres by mutableStateOf<List<CierreCaja>>(emptyList())
         private set
     var creditos by mutableStateOf<List<CreditoFiscal>>(emptyList())
@@ -49,6 +62,10 @@ class PetHomeViewModel : ViewModel() {
     init {
         cargarDatosDemo()
         refrescar()
+        viewModelScope.launch {
+            usuarioActual = gestorUsuarios.restaurarSesion()
+            verificandoSesion = false
+        }
     }
 
     private fun refrescar() {
@@ -62,22 +79,44 @@ class PetHomeViewModel : ViewModel() {
 
     // ---------------- Sesión ----------------
 
-    fun iniciarSesion(correo: String, contrasena: String): String? = try {
-        usuarioActual = gestorUsuarios.iniciarSesion(correo, contrasena)
-        null
-    } catch (e: DatosInvalidosException) {
-        e.message
+    fun iniciarSesion(correo: String, contrasena: String) =
+        autenticar { gestorUsuarios.iniciarSesion(correo, contrasena) }
+
+    fun registrar(nombre: String, correo: String, contrasena: String) =
+        autenticar { gestorUsuarios.registrar(nombre, correo, contrasena) }
+
+    fun iniciarSesionConGoogle(google: AutenticacionGoogle) =
+        autenticar { gestorUsuarios.iniciarSesionConGoogle(google.obtenerIdToken()) }
+
+    fun limpiarErrorAuth() {
+        errorAuth = null
     }
 
-    fun registrar(nombre: String, correo: String, contrasena: String, rol: Rol): String? = try {
-        usuarioActual = gestorUsuarios.registrar(nombre, correo, contrasena, rol)
-        null
-    } catch (e: DatosInvalidosException) {
-        e.message
-    }
-
-    fun cerrarSesion() {
+    /**
+     * Cierra la sesión en Firebase y olvida la cuenta de Google elegida, así
+     * nadie puede volver a entrar con el botón Atrás ni reutilizar la sesión.
+     */
+    fun cerrarSesion(google: AutenticacionGoogle? = null) {
+        gestorUsuarios.cerrarSesion()
         usuarioActual = null
+        errorAuth = null
+        if (google != null) viewModelScope.launch { google.limpiar() }
+    }
+
+    /** Ejecuta una operación de Firebase en segundo plano sin congelar la UI. */
+    private fun autenticar(operacion: suspend () -> Usuario) {
+        if (procesandoAuth) return
+        errorAuth = null
+        procesandoAuth = true
+        viewModelScope.launch {
+            try {
+                usuarioActual = operacion()
+            } catch (e: DatosInvalidosException) {
+                errorAuth = e.message
+            } finally {
+                procesandoAuth = false
+            }
+        }
     }
 
     // ---------------- Cierre de caja ----------------
