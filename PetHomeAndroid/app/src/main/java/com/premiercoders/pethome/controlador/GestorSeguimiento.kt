@@ -1,18 +1,51 @@
 package com.premiercoders.pethome.controlador
 
+import com.google.firebase.firestore.DocumentSnapshot
+import com.google.firebase.firestore.FieldValue
+import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.ListenerRegistration
 import com.premiercoders.pethome.modelo.EstadoSeguimiento
 import com.premiercoders.pethome.modelo.Seguimiento
 import com.premiercoders.pethome.util.LoggerErrores
+import kotlinx.coroutines.tasks.await
 import java.time.LocalDate
 
-class GestorSeguimiento {
-    private val seguimientos = mutableListOf<Seguimiento>()
-    private var siguienteId = 1
+/**
+ * Seguimientos post-tratamiento en Firestore, colección `seguimientos`
+ * (Foro 2). La fecha de control y los vencidos se siguen calculando en el
+ * modelo, igual que en la Etapa 2.
+ */
+class GestorSeguimiento(private val db: FirebaseFirestore = FirebaseFirestore.getInstance()) {
 
-    fun crear(paciente: String, procedimiento: String, fechaProcedimiento: LocalDate, diasParaControl: Long): Seguimiento {
-        val seguimiento = Seguimiento(siguienteId++, paciente.trim(), procedimiento.trim(), fechaProcedimiento, diasParaControl)
-        seguimientos.add(seguimiento)
-        return seguimiento
+    private val coleccion get() = db.collection(COLECCION)
+    private var seguimientos: List<Seguimiento> = emptyList()
+
+    fun escuchar(onCambio: () -> Unit, onError: (Exception) -> Unit): ListenerRegistration =
+        coleccion.addSnapshotListener { snapshot, error ->
+            if (error != null) {
+                onError(error)
+                return@addSnapshotListener
+            }
+            seguimientos = snapshot?.documents?.mapNotNull { aSeguimiento(it) }.orEmpty()
+            onCambio()
+        }
+
+    fun limpiar() {
+        seguimientos = emptyList()
+    }
+
+    suspend fun crear(paciente: String, procedimiento: String, fechaProcedimiento: LocalDate, diasParaControl: Long, uid: String) {
+        coleccion.add(
+            mapOf(
+                "paciente" to paciente.trim(),
+                "procedimiento" to procedimiento.trim(),
+                "fechaProcedimiento" to fechaProcedimiento.toString(),
+                "diasParaControl" to diasParaControl,
+                "estado" to EstadoSeguimiento.PENDIENTE.name,
+                "creadoPor" to uid,
+                "creadoEn" to FieldValue.serverTimestamp()
+            )
+        ).await()
     }
 
     /** Ordenados por la fecha de control más cercana. */
@@ -22,20 +55,14 @@ class GestorSeguimiento {
 
     fun vencidos(hoy: LocalDate = LocalDate.now()): List<Seguimiento> = listar().filter { it.estaVencido(hoy) }
 
-    fun marcarCompletado(id: Int): Boolean {
-        val index = seguimientos.indexOfFirst { it.id == id }
-        if (index == -1) {
-            LoggerErrores.registrar("Intento de completar un seguimiento inexistente (id=$id)")
-            return false
-        }
-        seguimientos[index] = seguimientos[index].copy(estado = EstadoSeguimiento.COMPLETADO)
-        return true
+    suspend fun marcarCompletado(id: String) {
+        coleccion.document(id).update(
+            mapOf("estado" to EstadoSeguimiento.COMPLETADO.name, "completadoEn" to FieldValue.serverTimestamp())
+        ).await()
     }
 
-    fun eliminar(id: Int): Boolean {
-        val eliminado = seguimientos.removeIf { it.id == id }
-        if (!eliminado) LoggerErrores.registrar("Intento de eliminar un seguimiento inexistente (id=$id)")
-        return eliminado
+    suspend fun eliminar(id: String) {
+        coleccion.document(id).delete().await()
     }
 
     fun proximosAVencer(dias: Int, hoy: LocalDate = LocalDate.now()): List<Seguimiento> {
@@ -43,5 +70,24 @@ class GestorSeguimiento {
         return listar().filter {
             it.estado == EstadoSeguimiento.PENDIENTE && !it.fechaControl.isBefore(hoy) && !it.fechaControl.isAfter(limite)
         }
+    }
+
+    private fun aSeguimiento(doc: DocumentSnapshot): Seguimiento? = try {
+        Seguimiento(
+            id = doc.id,
+            paciente = doc.getString("paciente").orEmpty(),
+            procedimiento = doc.getString("procedimiento").orEmpty(),
+            fechaProcedimiento = LocalDate.parse(doc.getString("fechaProcedimiento")),
+            diasParaControl = doc.getLong("diasParaControl") ?: 0L,
+            estado = EstadoSeguimiento.entries.find { it.name == doc.getString("estado") } ?: EstadoSeguimiento.PENDIENTE,
+            creadoPor = doc.getString("creadoPor").orEmpty()
+        )
+    } catch (e: Exception) {
+        LoggerErrores.registrar("Seguimiento ${doc.id} ignorado: ${e.message}")
+        null
+    }
+
+    companion object {
+        const val COLECCION = "seguimientos"
     }
 }
