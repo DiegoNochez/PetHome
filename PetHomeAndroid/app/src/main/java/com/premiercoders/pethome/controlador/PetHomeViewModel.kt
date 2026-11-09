@@ -5,13 +5,20 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.google.firebase.firestore.ListenerRegistration
 import com.premiercoders.pethome.modelo.CierreCaja
 import com.premiercoders.pethome.modelo.CreditoFiscal
+import android.content.ContentResolver
+import android.net.Uri
 import com.premiercoders.pethome.modelo.EvidenciaClinica
+import com.premiercoders.pethome.modelo.Modulo
 import com.premiercoders.pethome.modelo.ResumenFinanciero
 import com.premiercoders.pethome.modelo.Seguimiento
 import com.premiercoders.pethome.modelo.Usuario
 import com.premiercoders.pethome.util.DatosInvalidosException
+import com.premiercoders.pethome.util.ErroresFirestore
+import com.premiercoders.pethome.util.Formato
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 
@@ -21,7 +28,10 @@ import java.time.LocalDate
  * lista cambia, Compose vuelve a dibujar solo lo que depende de ella.
  *
  * Al ser un ViewModel, los datos sobreviven a la rotación de pantalla.
- * Las funciones que pueden fallar devuelven el mensaje de error o `null`.
+ *
+ * Foro 2: al iniciar sesión se abren listeners de Firestore para caja y
+ * créditos; cada cambio en la nube actualiza las listas y la UI se redibuja
+ * sola. Al cerrar sesión los listeners se cierran.
  */
 class PetHomeViewModel : ViewModel() {
 
@@ -46,6 +56,16 @@ class PetHomeViewModel : ViewModel() {
     /** Último error de login/registro, ya traducido al español. */
     var errorAuth by mutableStateOf<String?>(null)
         private set
+    /** `true` mientras se guarda algo en Firestore (deshabilita botones). */
+    var guardando by mutableStateOf(false)
+        private set
+
+    /** Error de sincronización con Firestore (sin permiso, sin red...). */
+    var errorSincronizacion by mutableStateOf<String?>(null)
+        private set
+
+    private val escuchas = mutableListOf<ListenerRegistration>()
+
     var cierres by mutableStateOf<List<CierreCaja>>(emptyList())
         private set
     var creditos by mutableStateOf<List<CreditoFiscal>>(emptyList())
@@ -60,11 +80,73 @@ class PetHomeViewModel : ViewModel() {
         private set
 
     init {
-        cargarDatosDemo()
         refrescar()
         viewModelScope.launch {
-            usuarioActual = gestorUsuarios.restaurarSesion()
+            establecerUsuario(gestorUsuarios.restaurarSesion())
             verificandoSesion = false
+        }
+    }
+
+    /** Guarda el usuario y abre (o cierra) la sincronización con Firestore. */
+    private fun establecerUsuario(usuario: Usuario?) {
+        usuarioActual = usuario
+        detenerSincronizacion()
+        if (usuario != null) iniciarSincronizacion()
+    }
+
+    private fun iniciarSincronizacion() {
+        errorSincronizacion = null
+        val alCambiar = { refrescar() }
+        val alFallar = { e: Exception -> errorSincronizacion = ErroresFirestore.mensaje("sincronizar los datos", e) }
+        escuchas += gestorCaja.escuchar(alCambiar, alFallar)
+        escuchas += gestorCredito.escuchar(alCambiar, alFallar)
+        // Los módulos clínicos solo los lee el administrador (las reglas lo exigen).
+        if (usuarioActual?.puedeAcceder(Modulo.EVIDENCIA_CLINICA) == true) {
+            escuchas += gestorEvidencia.escuchar(alCambiar, alFallar)
+            escuchas += gestorSeguimiento.escuchar(alCambiar, alFallar)
+        }
+    }
+
+    private fun detenerSincronizacion() {
+        escuchas.forEach { it.remove() }
+        escuchas.clear()
+        gestorCaja.limpiar()
+        gestorCredito.limpiar()
+        gestorEvidencia.limpiar()
+        gestorSeguimiento.limpiar()
+        refrescar()
+    }
+
+    override fun onCleared() {
+        escuchas.forEach { it.remove() }
+        super.onCleared()
+    }
+
+    /**
+     * Ejecuta una escritura en Firestore en segundo plano. [bloque] devuelve
+     * el mensaje de éxito; si falla, se muestra el error traducido.
+     */
+    private fun guardar(
+        operacion: String,
+        onResultado: (String) -> Unit,
+        onExito: () -> Unit = {},
+        bloque: suspend (Usuario) -> String
+    ) {
+        val usuario = usuarioActual ?: return onResultado("Tu sesión expiró. Vuelve a iniciar sesión")
+        if (guardando) return
+        guardando = true
+        viewModelScope.launch {
+            try {
+                val mensaje = bloque(usuario)
+                onExito()
+                onResultado(mensaje)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                onResultado(ErroresFirestore.mensaje(operacion, e))
+            } finally {
+                guardando = false
+            }
         }
     }
 
@@ -98,7 +180,7 @@ class PetHomeViewModel : ViewModel() {
      */
     fun cerrarSesion(google: AutenticacionGoogle? = null) {
         gestorUsuarios.cerrarSesion()
-        usuarioActual = null
+        establecerUsuario(null)
         errorAuth = null
         if (google != null) viewModelScope.launch { google.limpiar() }
     }
@@ -110,7 +192,7 @@ class PetHomeViewModel : ViewModel() {
         procesandoAuth = true
         viewModelScope.launch {
             try {
-                usuarioActual = operacion()
+                establecerUsuario(operacion())
             } catch (e: DatosInvalidosException) {
                 errorAuth = e.message
             } finally {
@@ -119,92 +201,92 @@ class PetHomeViewModel : ViewModel() {
         }
     }
 
-    // ---------------- Cierre de caja ----------------
+    // ---------------- Cierre de caja (Firestore) ----------------
 
-    fun registrarCierre(fecha: LocalDate, efectivo: Double, tarjeta: Double, transferencia: Double, contado: Double): CierreCaja {
-        val responsable = usuarioActual?.nombre ?: "Sin sesión"
-        val cierre = gestorCaja.registrar(fecha, efectivo, tarjeta, transferencia, contado, responsable)
-        refrescar()
-        return cierre
+    fun registrarCierre(
+        fecha: LocalDate, efectivo: Double, tarjeta: Double, transferencia: Double, contado: Double,
+        onExito: () -> Unit, onResultado: (String) -> Unit
+    ) = guardar("registrar el cierre", onResultado, onExito) { usuario ->
+        gestorCaja.registrar(fecha, efectivo, tarjeta, transferencia, contado, usuario.nombre, usuario.uid)
+        "Cierre del ${Formato.fecha(fecha)} guardado"
     }
 
-    fun actualizarConteo(id: Int, nuevoMonto: Double) {
-        gestorCaja.actualizarConteo(id, nuevoMonto)
-        refrescar()
+    fun actualizarConteo(id: String, nuevoMonto: Double, onResultado: (String) -> Unit) =
+        guardar("actualizar el conteo", onResultado) {
+            gestorCaja.actualizarConteo(id, nuevoMonto)
+            "Conteo actualizado"
+        }
+
+    fun eliminarCierre(id: String, onResultado: (String) -> Unit) =
+        guardar("eliminar el cierre", onResultado) {
+            gestorCaja.eliminar(id)
+            "Cierre eliminado"
+        }
+
+    // ---------------- Créditos fiscales (Firestore) ----------------
+
+    fun generarCredito(
+        fecha: LocalDate, cliente: String, nit: String, nrc: String, servicio: String, subtotal: Double,
+        onExito: () -> Unit, onResultado: (String) -> Unit
+    ) = guardar("emitir el crédito fiscal", onResultado, onExito) { usuario ->
+        val numero = gestorCredito.generar(fecha, cliente, nit, nrc, servicio, subtotal, usuario.uid)
+        "$numero emitido"
     }
 
-    fun eliminarCierre(id: Int) {
-        gestorCaja.eliminar(id)
-        refrescar()
+    fun anularCredito(numero: String, onResultado: (String) -> Unit) =
+        guardar("anular el crédito", onResultado) { usuario ->
+            gestorCredito.anular(numero, usuario.uid)
+            "$numero anulado"
+        }
+
+    // ---------------- Evidencia clínica (Firestore + Cloudinary) ----------------
+
+    /** `true` mientras se sube una foto a Cloudinary. */
+    var subiendoFoto by mutableStateOf(false)
+        private set
+
+    fun crearEvidencia(paciente: String, fecha: LocalDate, diagnostico: String, onExito: () -> Unit, onResultado: (String) -> Unit) =
+        guardar("crear la evidencia", onResultado, onExito) { usuario ->
+            gestorEvidencia.crear(paciente, fecha, diagnostico, usuario.uid)
+            "Registro de ${paciente.trim()} creado. Ya puedes adjuntarle fotos."
+        }
+
+    fun adjuntarFoto(id: String, resolver: ContentResolver, uri: Uri, onResultado: (String) -> Unit) {
+        if (guardando) return
+        subiendoFoto = true
+        guardar("subir la foto", { mensaje -> subiendoFoto = false; onResultado(mensaje) }) {
+            gestorEvidencia.adjuntarFoto(id, resolver, uri)
+            "Foto subida a la nube y adjuntada"
+        }
     }
 
-    // ---------------- Créditos fiscales ----------------
+    fun eliminarEvidencia(id: String, onResultado: (String) -> Unit) =
+        guardar("eliminar la evidencia", onResultado) {
+            gestorEvidencia.eliminar(id)
+            "Evidencia eliminada"
+        }
 
-    fun generarCredito(fecha: LocalDate, cliente: String, servicio: String, subtotal: Double): Result<CreditoFiscal> = try {
-        val credito = gestorCredito.generar(fecha, cliente, servicio, subtotal)
-        refrescar()
-        Result.success(credito)
-    } catch (e: DatosInvalidosException) {
-        Result.failure(e)
+    // ---------------- Seguimiento (Firestore) ----------------
+
+    fun crearSeguimiento(
+        paciente: String, procedimiento: String, fecha: LocalDate, dias: Long,
+        onExito: () -> Unit, onResultado: (String) -> Unit
+    ) = guardar("programar el seguimiento", onResultado, onExito) { usuario ->
+        gestorSeguimiento.crear(paciente, procedimiento, fecha, dias, usuario.uid)
+        "Control de ${paciente.trim()} programado para el ${Formato.fecha(fecha.plusDays(dias))}"
     }
 
-    fun anularCredito(numero: String) {
-        gestorCredito.anular(numero)
-        refrescar()
-    }
+    fun completarSeguimiento(id: String, onResultado: (String) -> Unit) =
+        guardar("completar el seguimiento", onResultado) {
+            gestorSeguimiento.marcarCompletado(id)
+            "Control marcado como completado"
+        }
 
-    // ---------------- Evidencia clínica ----------------
-
-    fun crearEvidencia(paciente: String, fecha: LocalDate, diagnostico: String): EvidenciaClinica {
-        val evidencia = gestorEvidencia.crear(paciente, fecha, diagnostico)
-        refrescar()
-        return evidencia
-    }
-
-    fun adjuntarFoto(id: Int, uri: String) {
-        gestorEvidencia.adjuntarFoto(id, uri)
-        refrescar()
-    }
-
-    fun eliminarEvidencia(id: Int) {
-        gestorEvidencia.eliminar(id)
-        refrescar()
-    }
-
-    // ---------------- Seguimiento ----------------
-
-    fun crearSeguimiento(paciente: String, procedimiento: String, fecha: LocalDate, dias: Long): Seguimiento {
-        val seguimiento = gestorSeguimiento.crear(paciente, procedimiento, fecha, dias)
-        refrescar()
-        return seguimiento
-    }
-
-    fun completarSeguimiento(id: Int) {
-        gestorSeguimiento.marcarCompletado(id)
-        refrescar()
-    }
-
-    fun eliminarSeguimiento(id: Int) {
-        gestorSeguimiento.eliminar(id)
-        refrescar()
-    }
+    fun eliminarSeguimiento(id: String, onResultado: (String) -> Unit) =
+        guardar("eliminar el seguimiento", onResultado) {
+            gestorSeguimiento.eliminar(id)
+            "Seguimiento eliminado"
+        }
 
     fun proximosAVencer(dias: Int = 7): List<Seguimiento> = gestorSeguimiento.proximosAVencer(dias)
-
-    /**
-     * Datos de ejemplo (mascotas ficticias) para que las pantallas no estén
-     * vacías en la demostración. En el Foro 2 los datos vendrán de Firestore.
-     */
-    private fun cargarDatosDemo() {
-        val hoy = LocalDate.now()
-        gestorCaja.registrar(hoy.minusDays(2), 245.50, 180.00, 75.00, 495.50, "Recepción Pet Home")
-        gestorCaja.registrar(hoy.minusDays(1), 310.00, 220.75, 40.00, 570.75, "Recepción Pet Home")
-        gestorCredito.generar(hoy.minusDays(2), "Agroservicios El Campo S.A. de C.V.", "Consulta y vacuna antirrábica", 35.00)
-        gestorCredito.generar(hoy.minusDays(1), "Distribuidora La Ceiba", "Profilaxis dental", 80.00)
-        gestorEvidencia.crear("Max (canino)", hoy.minusDays(1), "Herida en miembro anterior izquierdo, en cicatrización")
-        gestorSeguimiento.crear("Luna (felino)", "Profilaxis dental", hoy.minusDays(10), 7)
-        gestorSeguimiento.crear("Rocky (canino)", "Castración", hoy.minusDays(5), 10)
-        val vacuna = gestorSeguimiento.crear("Toby (canino)", "Vacuna polivalente", hoy.minusDays(30), 21)
-        gestorSeguimiento.marcarCompletado(vacuna.id)
-    }
 }
