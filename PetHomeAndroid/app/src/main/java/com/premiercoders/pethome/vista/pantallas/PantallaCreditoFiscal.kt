@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Badge
 import androidx.compose.material.icons.filled.Business
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.MedicalServices
@@ -41,9 +42,13 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import com.premiercoders.pethome.controlador.PetHomeViewModel
 import com.premiercoders.pethome.modelo.CreditoFiscal
+import com.premiercoders.pethome.modelo.Rol
 import com.premiercoders.pethome.util.Formato
 import com.premiercoders.pethome.util.Validador
+import com.premiercoders.pethome.vista.componentes.AvisoSincronizacion
 import com.premiercoders.pethome.vista.componentes.CampoTexto
+import com.premiercoders.pethome.vista.componentes.FiltroPeriodo
+import com.premiercoders.pethome.vista.componentes.PeriodoHistorial
 import com.premiercoders.pethome.vista.componentes.DialogoConfirmacion
 import com.premiercoders.pethome.vista.componentes.EstadoVacio
 import com.premiercoders.pethome.vista.componentes.FilaValor
@@ -59,6 +64,10 @@ private enum class FiltroCredito(val etiqueta: String) { TODOS("Todos"), VIGENTE
  * Créditos fiscales: muestra el correlativo que se va a emitir y calcula el
  * IVA y el total mientras se escribe el subtotal. Los créditos no se borran,
  * se anulan (conservan su número, como exige la práctica fiscal).
+ *
+ * Foro 2: se piden NIT y NRC del cliente, los créditos se guardan en
+ * Firestore y el historial se filtra por estado y por periodo. Solo el
+ * administrador puede anular.
  */
 @Composable
 fun PantallaCreditoFiscal(vm: PetHomeViewModel, onVolver: () -> Unit) {
@@ -67,11 +76,16 @@ fun PantallaCreditoFiscal(vm: PetHomeViewModel, onVolver: () -> Unit) {
 
     var fecha by rememberSaveable { mutableStateOf(LocalDate.now().toString()) }
     var cliente by rememberSaveable { mutableStateOf("") }
+    var nit by rememberSaveable { mutableStateOf("") }
+    var nrc by rememberSaveable { mutableStateOf("") }
     var servicio by rememberSaveable { mutableStateOf("") }
     var subtotal by rememberSaveable { mutableStateOf("") }
     var errores by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
     var filtro by rememberSaveable { mutableStateOf(FiltroCredito.TODOS) }
     var creditoAAnular by remember { mutableStateOf<CreditoFiscal?>(null) }
+    var periodo by rememberSaveable { mutableStateOf(PeriodoHistorial.TODOS) }
+    val esAdmin = vm.usuarioActual?.rol == Rol.ADMINISTRADOR
+    val avisar: (String) -> Unit = { texto -> scope.launch { snackbar.showSnackbar(texto) } }
 
     val subtotalNumero = Validador.aNumero(subtotal) ?: 0.0
     val iva = CreditoFiscal.calcularIva(subtotalNumero)
@@ -80,24 +94,29 @@ fun PantallaCreditoFiscal(vm: PetHomeViewModel, onVolver: () -> Unit) {
         val nuevos = mutableMapOf<String, String>()
         Validador.fecha(fecha)?.let { nuevos["fecha"] = it }
         Validador.textoObligatorio(cliente, "El cliente", minimo = 3)?.let { nuevos["cliente"] = it }
+        Validador.nit(nit)?.let { nuevos["nit"] = it }
+        Validador.nrc(nrc)?.let { nuevos["nrc"] = it }
         Validador.textoObligatorio(servicio, "El servicio", minimo = 3)?.let { nuevos["servicio"] = it }
         Validador.monto(subtotal, "El subtotal", permitirCero = false)?.let { nuevos["subtotal"] = it }
         errores = nuevos
         if (nuevos.isNotEmpty()) return
 
-        vm.generarCredito(Validador.aFecha(fecha)!!, cliente, servicio, subtotalNumero)
-            .onSuccess { credito ->
-                cliente = ""; servicio = ""; subtotal = ""
-                scope.launch { snackbar.showSnackbar("${credito.numeroCorrelativo} emitido por ${Formato.dinero(credito.total)}") }
-            }
-            .onFailure { e -> errores = mapOf("subtotal" to (e.message ?: "Error al emitir")) }
+        val total = Formato.dinero(subtotalNumero + iva)
+        vm.generarCredito(
+            Validador.aFecha(fecha)!!, cliente, nit, nrc, servicio, subtotalNumero,
+            onExito = { cliente = ""; nit = ""; nrc = ""; servicio = ""; subtotal = "" }
+        ) { mensaje -> avisar("$mensaje por $total") }
     }
 
-    val lista = when (filtro) {
-        FiltroCredito.TODOS -> vm.creditos
-        FiltroCredito.VIGENTES -> vm.creditos.filter { !it.anulado }
-        FiltroCredito.ANULADOS -> vm.creditos.filter { it.anulado }
-    }
+    val lista = vm.creditos
+        .filter { periodo.contiene(it.fecha) }
+        .filter {
+            when (filtro) {
+                FiltroCredito.TODOS -> true
+                FiltroCredito.VIGENTES -> !it.anulado
+                FiltroCredito.ANULADOS -> it.anulado
+            }
+        }
 
     PantallaBase(titulo = "Créditos Fiscales", onVolver = onVolver, snackbarHostState = snackbar) { padding ->
         LazyColumn(
@@ -105,6 +124,7 @@ fun PantallaCreditoFiscal(vm: PetHomeViewModel, onVolver: () -> Unit) {
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            item { AvisoSincronizacion(vm.errorSincronizacion) }
             item {
                 Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -117,13 +137,23 @@ fun PantallaCreditoFiscal(vm: PetHomeViewModel, onVolver: () -> Unit) {
                         }
                         CampoTexto(fecha, { fecha = it; errores = errores - "fecha" }, "Fecha (AAAA-MM-DD)", error = errores["fecha"], icono = Icons.Filled.CalendarMonth)
                         CampoTexto(cliente, { cliente = it; errores = errores - "cliente" }, "Cliente / razón social", error = errores["cliente"], icono = Icons.Filled.Business)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            CampoTexto(
+                                nit, { nit = it; errores = errores - "nit" }, "NIT", modifier = Modifier.weight(1.3f),
+                                error = errores["nit"], icono = Icons.Filled.Badge, teclado = KeyboardType.Phone
+                            )
+                            CampoTexto(
+                                nrc, { nrc = it; errores = errores - "nrc" }, "NRC", modifier = Modifier.weight(1f),
+                                error = errores["nrc"], teclado = KeyboardType.Phone
+                            )
+                        }
                         CampoTexto(servicio, { servicio = it; errores = errores - "servicio" }, "Servicio prestado", error = errores["servicio"], icono = Icons.Filled.MedicalServices)
                         CampoTexto(subtotal, { subtotal = it; errores = errores - "subtotal" }, "Subtotal (sin IVA) $", error = errores["subtotal"], teclado = KeyboardType.Decimal)
                         HorizontalDivider(Modifier.padding(vertical = 6.dp))
                         FilaValor("Subtotal", Formato.dinero(subtotalNumero))
                         FilaValor("IVA 13 %", Formato.dinero(iva))
                         FilaValor("Total", Formato.dinero(subtotalNumero + iva), resaltar = true, color = MaterialTheme.colorScheme.primary)
-                        Button(onClick = { emitir() }, modifier = Modifier.fillMaxWidth().padding(top = 8.dp).height(48.dp)) {
+                        Button(onClick = { emitir() }, enabled = !vm.guardando, modifier = Modifier.fillMaxWidth().padding(top = 8.dp).height(48.dp)) {
                             Text("Emitir crédito fiscal")
                         }
                     }
@@ -138,13 +168,14 @@ fun PantallaCreditoFiscal(vm: PetHomeViewModel, onVolver: () -> Unit) {
                             FilterChip(selected = filtro == opcion, onClick = { filtro = opcion }, label = { Text(opcion.etiqueta) })
                         }
                     }
+                    FiltroPeriodo(periodo) { periodo = it }
                 }
             }
             if (lista.isEmpty()) {
                 item { EstadoVacio("No hay créditos fiscales en esta lista") }
             }
             items(lista, key = { it.numeroCorrelativo }) { credito ->
-                TarjetaCredito(credito, onAnular = { creditoAAnular = credito })
+                TarjetaCredito(credito, onAnular = if (esAdmin) ({ creditoAAnular = credito }) else null)
             }
         }
     }
@@ -154,14 +185,14 @@ fun PantallaCreditoFiscal(vm: PetHomeViewModel, onVolver: () -> Unit) {
             titulo = "Anular ${credito.numeroCorrelativo}",
             mensaje = "El crédito quedará anulado y no contará en los reportes. Su número no se reutiliza.",
             textoConfirmar = "Anular",
-            onConfirmar = { vm.anularCredito(credito.numeroCorrelativo); creditoAAnular = null },
+            onConfirmar = { vm.anularCredito(credito.numeroCorrelativo, avisar); creditoAAnular = null },
             onCancelar = { creditoAAnular = null }
         )
     }
 }
 
 @Composable
-private fun TarjetaCredito(credito: CreditoFiscal, onAnular: () -> Unit) {
+private fun TarjetaCredito(credito: CreditoFiscal, onAnular: (() -> Unit)?) {
     Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
         Column(Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -174,12 +205,19 @@ private fun TarjetaCredito(credito: CreditoFiscal, onAnular: () -> Unit) {
                 Text(Formato.fecha(credito.fecha), style = MaterialTheme.typography.bodySmall)
             }
             Text(credito.cliente, style = MaterialTheme.typography.bodyMedium)
+            if (credito.nit.isNotBlank()) {
+                Text(
+                    "NIT ${credito.nit} · NRC ${credito.nrc}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
             Text(credito.servicio, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             FilaValor("Subtotal + IVA", "${Formato.dinero(credito.subtotal)} + ${Formato.dinero(credito.iva)}")
             FilaValor("Total", Formato.dinero(credito.total), resaltar = true)
             if (credito.anulado) {
                 Text("ANULADO", color = RojoAlerta, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelLarge)
-            } else {
+            } else if (onAnular != null) {
                 OutlinedButton(onClick = onAnular, modifier = Modifier.padding(top = 6.dp)) { Text("Anular") }
             }
         }

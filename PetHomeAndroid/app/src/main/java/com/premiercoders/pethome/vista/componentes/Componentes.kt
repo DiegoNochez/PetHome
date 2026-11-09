@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -18,6 +20,7 @@ import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -225,4 +228,52 @@ fun DialogoConfirmacion(
             TextButton(onClick = onCancelar) { Text("Cancelar") }
         }
     )
+}
+
+/**
+ * Periodos del filtro por fecha del historial (Foro 2). [contiene] decide si
+ * una fecha entra en el periodo elegido.
+ */
+enum class PeriodoHistorial(val etiqueta: String) {
+    TODOS("Todo"),
+    HOY("Hoy"),
+    SEMANA("Últimos 7 días"),
+    MES("Este mes");
+
+    fun contiene(fecha: java.time.LocalDate, hoy: java.time.LocalDate = java.time.LocalDate.now()): Boolean = when (this) {
+        TODOS -> true
+        HOY -> fecha == hoy
+        SEMANA -> !fecha.isBefore(hoy.minusDays(6)) && !fecha.isAfter(hoy)
+        MES -> fecha.year == hoy.year && fecha.month == hoy.month
+    }
+}
+
+/** Fila de chips para filtrar el historial por periodo. */
+@Composable
+fun FiltroPeriodo(seleccionado: PeriodoHistorial, onCambio: (PeriodoHistorial) -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        PeriodoHistorial.entries.forEach { periodo ->
+            FilterChip(selected = seleccionado == periodo, onClick = { onCambio(periodo) }, label = { Text(periodo.etiqueta) })
+        }
+    }
+}
+
+/** Aviso fijo cuando Firestore no puede sincronizar (sin permiso o sin red). */
+@Composable
+fun AvisoSincronizacion(mensaje: String?) {
+    if (mensaje == null) return
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Text(
+            mensaje,
+            modifier = Modifier.padding(12.dp),
+            color = MaterialTheme.colorScheme.onErrorContainer,
+            style = MaterialTheme.typography.bodyMedium
+        )
+    }
 }

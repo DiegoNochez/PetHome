@@ -41,9 +41,13 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.premiercoders.pethome.controlador.PetHomeViewModel
 import com.premiercoders.pethome.modelo.CierreCaja
+import com.premiercoders.pethome.modelo.Rol
 import com.premiercoders.pethome.util.Formato
 import com.premiercoders.pethome.util.Validador
+import com.premiercoders.pethome.vista.componentes.AvisoSincronizacion
 import com.premiercoders.pethome.vista.componentes.CampoTexto
+import com.premiercoders.pethome.vista.componentes.FiltroPeriodo
+import com.premiercoders.pethome.vista.componentes.PeriodoHistorial
 import com.premiercoders.pethome.vista.componentes.DialogoConfirmacion
 import com.premiercoders.pethome.vista.componentes.EstadoVacio
 import com.premiercoders.pethome.vista.componentes.FilaValor
@@ -65,6 +69,10 @@ fun colorDiferencia(cierre: CierreCaja): Color = when {
  * Cierre de caja: formulario con cálculo en vivo del total esperado y la
  * diferencia, y abajo el historial con filtro de faltantes, edición del
  * conteo físico y eliminación.
+ *
+ * Foro 2: el historial viene de Firestore en tiempo real y se filtra por
+ * periodo. Solo el administrador ve el botón de eliminar (las reglas de
+ * Firestore también lo exigen).
  */
 @Composable
 fun PantallaCierreCaja(vm: PetHomeViewModel, onVolver: () -> Unit) {
@@ -79,12 +87,15 @@ fun PantallaCierreCaja(vm: PetHomeViewModel, onVolver: () -> Unit) {
     var errores by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
 
     var soloFaltantes by rememberSaveable { mutableStateOf(false) }
+    var periodo by rememberSaveable { mutableStateOf(PeriodoHistorial.TODOS) }
+    val esAdmin = vm.usuarioActual?.rol == Rol.ADMINISTRADOR
+    val avisar: (String) -> Unit = { texto -> scope.launch { snackbar.showSnackbar(texto) } }
     var cierreAEditar by remember { mutableStateOf<CierreCaja?>(null) }
     var cierreAEliminar by remember { mutableStateOf<CierreCaja?>(null) }
 
     // Vista previa: reutiliza la lógica del modelo con los valores que ya se pueden leer.
     val vistaPrevia = CierreCaja(
-        id = 0,
+        id = "",
         fecha = LocalDate.now(),
         efectivo = Validador.aNumero(efectivo) ?: 0.0,
         tarjeta = Validador.aNumero(tarjeta) ?: 0.0,
@@ -103,15 +114,17 @@ fun PantallaCierreCaja(vm: PetHomeViewModel, onVolver: () -> Unit) {
         errores = nuevos
         if (nuevos.isNotEmpty()) return
 
-        val cierre = vm.registrarCierre(
+        val resultado = vistaPrevia.estadoDiferencia()
+        vm.registrarCierre(
             Validador.aFecha(fecha)!!, vistaPrevia.efectivo, vistaPrevia.tarjeta,
-            vistaPrevia.transferencia, vistaPrevia.montoContado
-        )
-        efectivo = ""; tarjeta = ""; transferencia = ""; contado = ""
-        scope.launch { snackbar.showSnackbar("Cierre #${cierre.id} registrado: ${cierre.estadoDiferencia()}") }
+            vistaPrevia.transferencia, vistaPrevia.montoContado,
+            onExito = { efectivo = ""; tarjeta = ""; transferencia = ""; contado = "" }
+        ) { mensaje -> avisar("$mensaje: $resultado") }
     }
 
-    val lista = if (soloFaltantes) vm.cierres.filter { it.tieneFaltante } else vm.cierres
+    val lista = vm.cierres
+        .filter { periodo.contiene(it.fecha) }
+        .filter { !soloFaltantes || it.tieneFaltante }
 
     PantallaBase(titulo = "Cierre de Caja", onVolver = onVolver, snackbarHostState = snackbar) { padding ->
         LazyColumn(
@@ -119,6 +132,7 @@ fun PantallaCierreCaja(vm: PetHomeViewModel, onVolver: () -> Unit) {
             contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            item { AvisoSincronizacion(vm.errorSincronizacion) }
             item {
                 Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -150,7 +164,7 @@ fun PantallaCierreCaja(vm: PetHomeViewModel, onVolver: () -> Unit) {
                         if (contado.isNotBlank()) {
                             FilaValor("Resultado", vistaPrevia.estadoDiferencia(), color = colorDiferencia(vistaPrevia), resaltar = true)
                         }
-                        Button(onClick = { registrar() }, modifier = Modifier.fillMaxWidth().padding(top = 8.dp).height(48.dp)) {
+                        Button(onClick = { registrar() }, enabled = !vm.guardando, modifier = Modifier.fillMaxWidth().padding(top = 8.dp).height(48.dp)) {
                             Text("Registrar cierre")
                         }
                     }
@@ -158,15 +172,22 @@ fun PantallaCierreCaja(vm: PetHomeViewModel, onVolver: () -> Unit) {
             }
 
             item {
-                TituloSeccion("Historial (${lista.size})") {
-                    FilterChip(selected = soloFaltantes, onClick = { soloFaltantes = !soloFaltantes }, label = { Text("Solo faltantes") })
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    TituloSeccion("Historial (${lista.size})") {
+                        FilterChip(selected = soloFaltantes, onClick = { soloFaltantes = !soloFaltantes }, label = { Text("Solo faltantes") })
+                    }
+                    FiltroPeriodo(periodo) { periodo = it }
                 }
             }
             if (lista.isEmpty()) {
-                item { EstadoVacio(if (soloFaltantes) "No hay cierres con faltante" else "Aún no hay cierres registrados") }
+                item { EstadoVacio(if (vm.cierres.isEmpty()) "Aún no hay cierres registrados" else "No hay cierres con este filtro") }
             }
             items(lista, key = { it.id }) { cierre ->
-                TarjetaCierre(cierre, onEditar = { cierreAEditar = cierre }, onEliminar = { cierreAEliminar = cierre })
+                TarjetaCierre(
+                    cierre,
+                    onEditar = { cierreAEditar = cierre },
+                    onEliminar = if (esAdmin) ({ cierreAEliminar = cierre }) else null
+                )
             }
         }
     }
@@ -175,35 +196,36 @@ fun PantallaCierreCaja(vm: PetHomeViewModel, onVolver: () -> Unit) {
         DialogoEditarConteo(
             cierre = cierre,
             onGuardar = { monto ->
-                vm.actualizarConteo(cierre.id, monto)
+                vm.actualizarConteo(cierre.id, monto, avisar)
                 cierreAEditar = null
-                scope.launch { snackbar.showSnackbar("Conteo del cierre #${cierre.id} actualizado") }
             },
             onCancelar = { cierreAEditar = null }
         )
     }
     cierreAEliminar?.let { cierre ->
         DialogoConfirmacion(
-            titulo = "Eliminar cierre #${cierre.id}",
+            titulo = "Eliminar cierre",
             mensaje = "Se eliminará el cierre del ${Formato.fecha(cierre.fecha)}. Esta acción no se puede deshacer.",
             textoConfirmar = "Eliminar",
-            onConfirmar = { vm.eliminarCierre(cierre.id); cierreAEliminar = null },
+            onConfirmar = { vm.eliminarCierre(cierre.id, avisar); cierreAEliminar = null },
             onCancelar = { cierreAEliminar = null }
         )
     }
 }
 
 @Composable
-private fun TarjetaCierre(cierre: CierreCaja, onEditar: () -> Unit, onEliminar: () -> Unit) {
+private fun TarjetaCierre(cierre: CierreCaja, onEditar: () -> Unit, onEliminar: (() -> Unit)?) {
     Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
         Column(Modifier.padding(start = 16.dp, top = 8.dp, bottom = 12.dp, end = 4.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text("Cierre #${cierre.id} · ${Formato.fecha(cierre.fecha)}", fontWeight = FontWeight.SemiBold)
+                    Text("Cierre del ${Formato.fecha(cierre.fecha)}", fontWeight = FontWeight.SemiBold)
                     Text(cierre.responsable, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 IconButton(onClick = onEditar) { Icon(Icons.Filled.Edit, contentDescription = "Editar conteo") }
-                IconButton(onClick = onEliminar) { Icon(Icons.Filled.Delete, contentDescription = "Eliminar") }
+                if (onEliminar != null) {
+                    IconButton(onClick = onEliminar) { Icon(Icons.Filled.Delete, contentDescription = "Eliminar") }
+                }
             }
             Column(Modifier.padding(end = 12.dp)) {
                 FilaValor("Efectivo / Tarjeta / Transf.", "${Formato.dinero(cierre.efectivo)} / ${Formato.dinero(cierre.tarjeta)} / ${Formato.dinero(cierre.transferencia)}")
