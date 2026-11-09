@@ -34,6 +34,17 @@ repositorio** (está en `.gitignore`). Cada integrante debe:
 - El rol **ADMINISTRADOR** se asigna solo desde la consola: Firestore → `usuarios` →
   documento del usuario → cambiar el campo `rol`. Las reglas impiden que la app lo cambie.
 
+### Colecciones de Firestore
+| Colección | Contenido | Quién escribe |
+| --- | --- | --- |
+| `usuarios/{uid}` | nombre, correo, rol | cada usuario crea el suyo (rol Recepcionista) |
+| `cierresCaja/{id}` | fecha, efectivo, tarjeta, transferencia, montoContado, responsable, creadoPor | los dos roles; eliminar solo Administrador |
+| `creditosFiscales/{CCF-AAAA-####}` | cliente, NIT, NRC, servicio, subtotal, anulado, creadoPor | los dos roles; anular solo Administrador |
+| `contadores/creditos-AAAA` | siguiente correlativo | transacción al emitir un crédito |
+
+Las listas de caja y créditos se actualizan en tiempo real (`addSnapshotListener`) y el
+historial se puede filtrar por periodo (hoy, últimos 7 días, este mes).
+
 ### Reglas de seguridad
 Las reglas están en [`firestore.rules`](firestore.rules) y se publican en
 **Firestore Database → Reglas**. Cada usuario solo puede leer y crear su propio perfil,

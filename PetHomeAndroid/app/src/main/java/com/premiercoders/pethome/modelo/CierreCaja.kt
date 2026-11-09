@@ -8,15 +8,19 @@ import java.util.Locale
  * Módulo de Cierre de Caja. La lógica de negocio está en [totalEsperado] y
  * [diferencia]: concilian lo que debería haber según los ingresos del día
  * contra el conteo físico del recepcionista.
+ *
+ * Foro 2: el [id] es el ID del documento en Firestore (colección
+ * `cierresCaja`) y [creadoPor] es el uid de quien registró el cierre.
  */
 data class CierreCaja(
-    val id: Int,
+    val id: String,
     val fecha: LocalDate,
     val efectivo: Double,
     val tarjeta: Double,
     val transferencia: Double,
     val montoContado: Double,
-    val responsable: String
+    val responsable: String,
+    val creadoPor: String = ""
 ) : Resumible {
 
     val totalEsperado: Double
@@ -38,7 +42,7 @@ data class CierreCaja(
     }
 
     override fun resumen(): String = String.format(
-        Locale.US, "Cierre #%d [%s] %s | Esperado: $%.2f | Contado: $%.2f | %s",
+        Locale.US, "Cierre %s [%s] %s | Esperado: $%.2f | Contado: $%.2f | %s",
         id, fecha, responsable, totalEsperado, montoContado, estadoDiferencia()
     )
 
