@@ -8,7 +8,10 @@ import androidx.lifecycle.viewModelScope
 import com.google.firebase.firestore.ListenerRegistration
 import com.premiercoders.pethome.modelo.CierreCaja
 import com.premiercoders.pethome.modelo.CreditoFiscal
+import android.content.ContentResolver
+import android.net.Uri
 import com.premiercoders.pethome.modelo.EvidenciaClinica
+import com.premiercoders.pethome.modelo.Modulo
 import com.premiercoders.pethome.modelo.ResumenFinanciero
 import com.premiercoders.pethome.modelo.Seguimiento
 import com.premiercoders.pethome.modelo.Usuario
@@ -77,7 +80,6 @@ class PetHomeViewModel : ViewModel() {
         private set
 
     init {
-        cargarDatosDemo()
         refrescar()
         viewModelScope.launch {
             establecerUsuario(gestorUsuarios.restaurarSesion())
@@ -98,6 +100,11 @@ class PetHomeViewModel : ViewModel() {
         val alFallar = { e: Exception -> errorSincronizacion = ErroresFirestore.mensaje("sincronizar los datos", e) }
         escuchas += gestorCaja.escuchar(alCambiar, alFallar)
         escuchas += gestorCredito.escuchar(alCambiar, alFallar)
+        // Los módulos clínicos solo los lee el administrador (las reglas lo exigen).
+        if (usuarioActual?.puedeAcceder(Modulo.EVIDENCIA_CLINICA) == true) {
+            escuchas += gestorEvidencia.escuchar(alCambiar, alFallar)
+            escuchas += gestorSeguimiento.escuchar(alCambiar, alFallar)
+        }
     }
 
     private fun detenerSincronizacion() {
@@ -105,6 +112,8 @@ class PetHomeViewModel : ViewModel() {
         escuchas.clear()
         gestorCaja.limpiar()
         gestorCredito.limpiar()
+        gestorEvidencia.limpiar()
+        gestorSeguimiento.limpiar()
         refrescar()
     }
 
@@ -230,54 +239,54 @@ class PetHomeViewModel : ViewModel() {
             "$numero anulado"
         }
 
-    // ---------------- Evidencia clínica ----------------
+    // ---------------- Evidencia clínica (Firestore + Cloudinary) ----------------
 
-    fun crearEvidencia(paciente: String, fecha: LocalDate, diagnostico: String): EvidenciaClinica {
-        val evidencia = gestorEvidencia.crear(paciente, fecha, diagnostico)
-        refrescar()
-        return evidencia
+    /** `true` mientras se sube una foto a Cloudinary. */
+    var subiendoFoto by mutableStateOf(false)
+        private set
+
+    fun crearEvidencia(paciente: String, fecha: LocalDate, diagnostico: String, onExito: () -> Unit, onResultado: (String) -> Unit) =
+        guardar("crear la evidencia", onResultado, onExito) { usuario ->
+            gestorEvidencia.crear(paciente, fecha, diagnostico, usuario.uid)
+            "Registro de ${paciente.trim()} creado. Ya puedes adjuntarle fotos."
+        }
+
+    fun adjuntarFoto(id: String, resolver: ContentResolver, uri: Uri, onResultado: (String) -> Unit) {
+        if (guardando) return
+        subiendoFoto = true
+        guardar("subir la foto", { mensaje -> subiendoFoto = false; onResultado(mensaje) }) {
+            gestorEvidencia.adjuntarFoto(id, resolver, uri)
+            "Foto subida a la nube y adjuntada"
+        }
     }
 
-    fun adjuntarFoto(id: Int, uri: String) {
-        gestorEvidencia.adjuntarFoto(id, uri)
-        refrescar()
+    fun eliminarEvidencia(id: String, onResultado: (String) -> Unit) =
+        guardar("eliminar la evidencia", onResultado) {
+            gestorEvidencia.eliminar(id)
+            "Evidencia eliminada"
+        }
+
+    // ---------------- Seguimiento (Firestore) ----------------
+
+    fun crearSeguimiento(
+        paciente: String, procedimiento: String, fecha: LocalDate, dias: Long,
+        onExito: () -> Unit, onResultado: (String) -> Unit
+    ) = guardar("programar el seguimiento", onResultado, onExito) { usuario ->
+        gestorSeguimiento.crear(paciente, procedimiento, fecha, dias, usuario.uid)
+        "Control de ${paciente.trim()} programado para el ${Formato.fecha(fecha.plusDays(dias))}"
     }
 
-    fun eliminarEvidencia(id: Int) {
-        gestorEvidencia.eliminar(id)
-        refrescar()
-    }
+    fun completarSeguimiento(id: String, onResultado: (String) -> Unit) =
+        guardar("completar el seguimiento", onResultado) {
+            gestorSeguimiento.marcarCompletado(id)
+            "Control marcado como completado"
+        }
 
-    // ---------------- Seguimiento ----------------
-
-    fun crearSeguimiento(paciente: String, procedimiento: String, fecha: LocalDate, dias: Long): Seguimiento {
-        val seguimiento = gestorSeguimiento.crear(paciente, procedimiento, fecha, dias)
-        refrescar()
-        return seguimiento
-    }
-
-    fun completarSeguimiento(id: Int) {
-        gestorSeguimiento.marcarCompletado(id)
-        refrescar()
-    }
-
-    fun eliminarSeguimiento(id: Int) {
-        gestorSeguimiento.eliminar(id)
-        refrescar()
-    }
+    fun eliminarSeguimiento(id: String, onResultado: (String) -> Unit) =
+        guardar("eliminar el seguimiento", onResultado) {
+            gestorSeguimiento.eliminar(id)
+            "Seguimiento eliminado"
+        }
 
     fun proximosAVencer(dias: Int = 7): List<Seguimiento> = gestorSeguimiento.proximosAVencer(dias)
-
-    /**
-     * Datos de ejemplo (mascotas ficticias) para que las pantallas no estén
-     * vacías en la demostración. Caja y créditos ya vienen de Firestore.
-     */
-    private fun cargarDatosDemo() {
-        val hoy = LocalDate.now()
-        gestorEvidencia.crear("Max (canino)", hoy.minusDays(1), "Herida en miembro anterior izquierdo, en cicatrización")
-        gestorSeguimiento.crear("Luna (felino)", "Profilaxis dental", hoy.minusDays(10), 7)
-        gestorSeguimiento.crear("Rocky (canino)", "Castración", hoy.minusDays(5), 10)
-        val vacuna = gestorSeguimiento.crear("Toby (canino)", "Vacuna polivalente", hoy.minusDays(30), 21)
-        gestorSeguimiento.marcarCompletado(vacuna.id)
-    }
 }

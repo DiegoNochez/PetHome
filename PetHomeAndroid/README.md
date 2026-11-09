@@ -28,6 +28,18 @@ repositorio** (está en `.gitignore`). Cada integrante debe:
    SHA1 de la variante `debug` y agregarlo en **Tus apps → Add fingerprint**.
 4. Usar un emulador con **Google Play** y una cuenta de Google iniciada.
 
+### Fotos clínicas (Cloudinary)
+Las fotos de Evidencia Clínica se suben a [Cloudinary](https://cloudinary.com) (plan gratuito) y en
+Firestore solo se guarda su URL. Para configurarlo:
+1. Crear una cuenta gratuita y copiar el **Cloud name** del panel.
+2. En **Settings → Upload → Upload presets → Add upload preset**, elegir *Signing mode: Unsigned* y guardar.
+3. Agregar en `PetHomeAndroid/local.properties` (no se sube al repositorio):
+   ```
+   cloudinary.cloudName=TU_CLOUD_NAME
+   cloudinary.uploadPreset=TU_PRESET
+   ```
+4. Sincronizar Gradle y volver a compilar.
+
 ### Roles
 - Toda cuenta nueva (registro o primer ingreso con Google) se crea en Firestore,
   en `usuarios/{uid}`, con rol **RECEPCIONISTA**.
@@ -41,6 +53,8 @@ repositorio** (está en `.gitignore`). Cada integrante debe:
 | `cierresCaja/{id}` | fecha, efectivo, tarjeta, transferencia, montoContado, responsable, creadoPor | los dos roles; eliminar solo Administrador |
 | `creditosFiscales/{CCF-AAAA-####}` | cliente, NIT, NRC, servicio, subtotal, anulado, creadoPor | los dos roles; anular solo Administrador |
 | `contadores/creditos-AAAA` | siguiente correlativo | transacción al emitir un crédito |
+| `evidencias/{id}` | paciente, fecha, diagnóstico, fotos (URL de Cloudinary), creadoPor | solo Administrador |
+| `seguimientos/{id}` | paciente, procedimiento, fechaProcedimiento, diasParaControl, estado, creadoPor | solo Administrador |
 
 Las listas de caja y créditos se actualizan en tiempo real (`addSnapshotListener`) y el
 historial se puede filtrar por periodo (hoy, últimos 7 días, este mes).
