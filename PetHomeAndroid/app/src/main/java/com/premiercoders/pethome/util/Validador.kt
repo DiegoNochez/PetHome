@@ -11,6 +11,12 @@ import java.time.format.DateTimeParseException
  */
 object Validador {
 
+    // NIT de 14 dígitos (0614-150390-102-3) o DUI homologado como NIT (01234567-8).
+    private val regexNit = Regex("^(\\d{4}-\\d{6}-\\d{3}-\\d|\\d{8}-\\d)$")
+
+    // NRC: de 1 a 7 dígitos, guion y dígito verificador (123456-7).
+    private val regexNrc = Regex("^\\d{1,7}-\\d$")
+
     private val regexCorreo = Regex("^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$")
 
     fun textoObligatorio(valor: String, campo: String, minimo: Int = 2): String? = when {
@@ -22,6 +28,18 @@ object Validador {
     fun correo(valor: String): String? = when {
         valor.isBlank() -> "El correo es obligatorio"
         !regexCorreo.matches(valor.trim()) -> "Correo inválido (ej. nombre@pethome.com)"
+        else -> null
+    }
+
+    fun nit(valor: String): String? = when {
+        valor.isBlank() -> "El NIT es obligatorio"
+        !regexNit.matches(valor.trim()) -> "Formato: 0614-150390-102-3 o DUI 01234567-8"
+        else -> null
+    }
+
+    fun nrc(valor: String): String? = when {
+        valor.isBlank() -> "El NRC es obligatorio"
+        !regexNrc.matches(valor.trim()) -> "Formato: 123456-7"
         else -> null
     }
 
