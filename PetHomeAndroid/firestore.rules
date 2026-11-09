@@ -44,8 +44,81 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
-    // ---------- Módulos de la app ----------
-    // Las reglas de cierres de caja, créditos fiscales, evidencias y
-    // seguimientos se agregan aquí (usar autenticado() y esAdmin()).
+    // Un número válido para montos: no negativo y con tope razonable.
+    function montoValido(valor) {
+      return valor is number && valor >= 0 && valor <= 1000000;
+    }
+
+    // Fecha guardada como texto AAAA-MM-DD.
+    function fechaValida(valor) {
+      return valor is string && valor.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$');
+    }
+
+    // ---------- Cierre de caja (los dos roles) ----------
+    // Cualquiera del personal puede ver y registrar cierres, pero el
+    // cierre queda a nombre de quien lo crea (creadoPor = su uid).
+    // Corregir el conteo físico solo cambia montoContado.
+    // Eliminar un cierre es solo del administrador.
+    match /cierresCaja/{cierreId} {
+      allow read: if autenticado();
+
+      allow create: if autenticado()
+        && request.resource.data.keys().hasOnly(['fecha', 'efectivo', 'tarjeta', 'transferencia',
+                                                 'montoContado', 'responsable', 'creadoPor', 'creadoEn'])
+        && fechaValida(request.resource.data.fecha)
+        && montoValido(request.resource.data.efectivo)
+        && montoValido(request.resource.data.tarjeta)
+        && montoValido(request.resource.data.transferencia)
+        && montoValido(request.resource.data.montoContado)
+        && request.resource.data.creadoPor == request.auth.uid
+        && request.resource.data.creadoEn == request.time;
+
+      allow update: if autenticado()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['montoContado', 'actualizadoEn'])
+        && montoValido(request.resource.data.montoContado);
+
+      allow delete: if esAdmin();
+    }
+
+    // ---------- Créditos fiscales (los dos roles) ----------
+    // Un crédito emitido no se borra ni se edita: solo se anula, y anular
+    // es solo del administrador. El ID del documento es el correlativo.
+    match /creditosFiscales/{numero} {
+      allow read: if autenticado();
+
+      allow create: if autenticado()
+        && request.resource.data.keys().hasOnly(['numeroCorrelativo', 'fecha', 'cliente', 'nit', 'nrc',
+                                                 'servicio', 'subtotal', 'anulado', 'creadoPor', 'creadoEn'])
+        && request.resource.data.numeroCorrelativo == numero
+        && fechaValida(request.resource.data.fecha)
+        && request.resource.data.cliente is string && request.resource.data.cliente.size() >= 3
+        && request.resource.data.nit is string && request.resource.data.nit.size() > 0
+        && request.resource.data.nrc is string && request.resource.data.nrc.size() > 0
+        && montoValido(request.resource.data.subtotal) && request.resource.data.subtotal > 0
+        && request.resource.data.anulado == false
+        && request.resource.data.creadoPor == request.auth.uid
+        && request.resource.data.creadoEn == request.time;
+
+      allow update: if esAdmin()
+        && resource.data.anulado == false
+        && request.resource.data.anulado == true
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['anulado', 'anuladoPor', 'anuladoEn'])
+        && request.resource.data.anuladoPor == request.auth.uid;
+
+      allow delete: if false;
+    }
+
+    // ---------- Contador del correlativo ----------
+    // Solo puede avanzar de uno en uno; nadie puede retrocederlo ni saltarse números.
+    match /contadores/{contadorId} {
+      allow read: if autenticado();
+      allow create: if autenticado() && request.resource.data.siguiente == 2;
+      allow update: if autenticado()
+        && request.resource.data.siguiente == resource.data.siguiente + 1;
+      allow delete: if false;
+    }
+
+    // ---------- Módulos clínicos ----------
+    // Las reglas de evidencias y seguimientos se agregan aquí (solo esAdmin()).
   }
 }
