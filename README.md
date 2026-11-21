@@ -1,3 +1,11 @@
+## Entrega Foro 2 (Etapa 3): Firebase y módulos secundarios
+
+- **Video demostración y documento de investigación (APA 7):** [carpeta en Google Drive](https://drive.google.com/drive/folders/1B4b_hDTzGH_dvvErGDaYmTtByyD473L0?usp=sharing)
+- **Código fuente de la app Android:** [PetHomeAndroid/](PetHomeAndroid/)
+- **Configuración de Firebase y Cloudinary:** ver [PetHomeAndroid/README.md](PetHomeAndroid/README.md)
+- **Pull Requests del foro:** #8 (autenticación), #9 (caja y créditos), #10 (evidencia, seguimiento y gráfica)
+
+--------------------------------------------------------------------------------------------------------------------------
 
 ## Entrega Foro 1 (Etapa 3)
 

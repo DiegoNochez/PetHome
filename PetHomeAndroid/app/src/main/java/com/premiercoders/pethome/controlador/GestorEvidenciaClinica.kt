@@ -1,35 +1,90 @@
 package com.premiercoders.pethome.controlador
 
+import android.content.ContentResolver
+import android.net.Uri
+import com.google.firebase.firestore.DocumentSnapshot
+import com.google.firebase.firestore.FieldValue
+import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.ListenerRegistration
+import com.google.firebase.firestore.Query
 import com.premiercoders.pethome.modelo.EvidenciaClinica
+import com.premiercoders.pethome.util.DatosInvalidosException
 import com.premiercoders.pethome.util.LoggerErrores
+import kotlinx.coroutines.tasks.await
 import java.time.LocalDate
 
-class GestorEvidenciaClinica {
-    private val registros = mutableListOf<EvidenciaClinica>()
-    private var siguienteId = 1
+/**
+ * Evidencias clínicas en Firestore, colección `evidencias` (Foro 2).
+ * Las fotos van a Cloudinary con [ClienteCloudinary]; aquí solo se agrega
+ * su URL al arreglo `fotos` del documento.
+ */
+class GestorEvidenciaClinica(
+    private val db: FirebaseFirestore = FirebaseFirestore.getInstance(),
+    private val cloudinary: ClienteCloudinary = ClienteCloudinary()
+) {
+    private val coleccion get() = db.collection(COLECCION)
+    private var registros: List<EvidenciaClinica> = emptyList()
 
-    fun crear(paciente: String, fecha: LocalDate, diagnostico: String): EvidenciaClinica {
-        val evidencia = EvidenciaClinica(siguienteId++, paciente.trim(), fecha, diagnostico.trim())
-        registros.add(evidencia)
-        return evidencia
+    fun escuchar(onCambio: () -> Unit, onError: (Exception) -> Unit): ListenerRegistration =
+        coleccion.orderBy("fecha", Query.Direction.DESCENDING)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    onError(error)
+                    return@addSnapshotListener
+                }
+                registros = snapshot?.documents?.mapNotNull { aEvidencia(it) }.orEmpty()
+                onCambio()
+            }
+
+    fun limpiar() {
+        registros = emptyList()
     }
 
-    fun listar(): List<EvidenciaClinica> = registros.sortedWith(compareByDescending<EvidenciaClinica> { it.fecha }.thenByDescending { it.id })
+    suspend fun crear(paciente: String, fecha: LocalDate, diagnostico: String, uid: String) {
+        coleccion.add(
+            mapOf(
+                "paciente" to paciente.trim(),
+                "fecha" to fecha.toString(),
+                "diagnostico" to diagnostico.trim(),
+                "fotos" to emptyList<String>(),
+                "creadoPor" to uid,
+                "creadoEn" to FieldValue.serverTimestamp()
+            )
+        ).await()
+    }
 
-    fun adjuntarFoto(id: Int, uriFoto: String): Boolean {
-        val index = registros.indexOfFirst { it.id == id }
-        if (index == -1) {
-            LoggerErrores.registrar("Intento de adjuntar foto a una evidencia inexistente (id=$id)")
-            return false
+    fun listar(): List<EvidenciaClinica> = registros
+
+    /** Sube la foto a Cloudinary y guarda su URL en la evidencia. */
+    suspend fun adjuntarFoto(id: String, resolver: ContentResolver, uri: Uri) {
+        val evidencia = registros.find { it.id == id }
+        if (evidencia != null && evidencia.fotosAdjuntas.size >= EvidenciaClinica.MAXIMO_FOTOS) {
+            throw DatosInvalidosException("Máximo ${EvidenciaClinica.MAXIMO_FOTOS} fotos por registro")
         }
-        val actual = registros[index]
-        registros[index] = actual.copy(fotosAdjuntas = actual.fotosAdjuntas + uriFoto)
-        return true
+        val url = cloudinary.subirFoto(resolver, uri)
+        coleccion.document(id).update("fotos", FieldValue.arrayUnion(url)).await()
     }
 
-    fun eliminar(id: Int): Boolean {
-        val eliminado = registros.removeIf { it.id == id }
-        if (!eliminado) LoggerErrores.registrar("Intento de eliminar una evidencia inexistente (id=$id)")
-        return eliminado
+    suspend fun eliminar(id: String) {
+        coleccion.document(id).delete().await()
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun aEvidencia(doc: DocumentSnapshot): EvidenciaClinica? = try {
+        EvidenciaClinica(
+            id = doc.id,
+            paciente = doc.getString("paciente").orEmpty(),
+            fecha = LocalDate.parse(doc.getString("fecha")),
+            diagnostico = doc.getString("diagnostico").orEmpty(),
+            fotosAdjuntas = (doc.get("fotos") as? List<String>).orEmpty(),
+            creadoPor = doc.getString("creadoPor").orEmpty()
+        )
+    } catch (e: Exception) {
+        LoggerErrores.registrar("Evidencia ${doc.id} ignorada: ${e.message}")
+        null
+    }
+
+    companion object {
+        const val COLECCION = "evidencias"
     }
 }

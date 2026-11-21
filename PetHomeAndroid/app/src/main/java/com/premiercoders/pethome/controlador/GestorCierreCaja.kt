@@ -6,6 +6,7 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.Query
 import com.premiercoders.pethome.modelo.CierreCaja
+import com.premiercoders.pethome.modelo.IngresoDiario
 import com.premiercoders.pethome.util.LoggerErrores
 import kotlinx.coroutines.tasks.await
 import java.time.LocalDate
@@ -83,6 +84,13 @@ class GestorCierreCaja(private val db: FirebaseFirestore = FirebaseFirestore.get
         cierres.sumOf { it.tarjeta },
         cierres.sumOf { it.transferencia }
     )
+
+    /** Total cobrado por día en los últimos [dias] días (incluye días sin cierres). */
+    fun ingresosPorDia(dias: Int = 7, hoy: LocalDate = LocalDate.now()): List<IngresoDiario> =
+        (dias - 1 downTo 0).map { atras ->
+            val fecha = hoy.minusDays(atras.toLong())
+            IngresoDiario(fecha, cierres.filter { it.fecha == fecha }.sumOf { it.totalEsperado })
+        }
 
     /** Convierte un documento en [CierreCaja]; si está incompleto lo ignora. */
     private fun aCierre(doc: DocumentSnapshot): CierreCaja? = try {

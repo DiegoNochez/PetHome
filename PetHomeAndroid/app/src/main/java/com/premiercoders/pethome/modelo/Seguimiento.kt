@@ -7,14 +7,17 @@ import java.time.LocalDate
  * Seguimiento post-tratamiento. La fecha de control se calcula sumando
  * [diasParaControl] a la fecha del procedimiento, y [estaVencido] detecta el
  * caso real de la entrevista: un paciente que no regresó a su control.
+ *
+ * Foro 2: se guarda en Firestore (colección `seguimientos`).
  */
 data class Seguimiento(
-    val id: Int,
+    val id: String,
     val paciente: String,
     val procedimiento: String,
     val fechaProcedimiento: LocalDate,
     val diasParaControl: Long,
-    val estado: EstadoSeguimiento = EstadoSeguimiento.PENDIENTE
+    val estado: EstadoSeguimiento = EstadoSeguimiento.PENDIENTE,
+    val creadoPor: String = ""
 ) : Resumible {
 
     val fechaControl: LocalDate
@@ -24,5 +27,5 @@ data class Seguimiento(
         estado == EstadoSeguimiento.PENDIENTE && fechaControl.isBefore(hoy)
 
     override fun resumen(): String =
-        "Seguimiento #$id - $paciente ($procedimiento) | Control: $fechaControl | $estado"
+        "Seguimiento $id - $paciente ($procedimiento) | Control: $fechaControl | $estado"
 }

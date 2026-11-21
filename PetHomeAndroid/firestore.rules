@@ -118,7 +118,50 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // ---------- Módulos clínicos ----------
-    // Las reglas de evidencias y seguimientos se agregan aquí (solo esAdmin()).
+    // ---------- Evidencia clínica (solo Administrador / Veterinario) ----------
+    // Los datos clínicos no los ve recepción. Las fotos viven en Cloudinary;
+    // aquí solo se guardan sus URL (máximo 10 por registro).
+    match /evidencias/{evidenciaId} {
+      allow read: if esAdmin();
+
+      allow create: if esAdmin()
+        && request.resource.data.keys().hasOnly(['paciente', 'fecha', 'diagnostico', 'fotos', 'creadoPor', 'creadoEn'])
+        && request.resource.data.paciente is string && request.resource.data.paciente.size() >= 2
+        && fechaValida(request.resource.data.fecha)
+        && request.resource.data.diagnostico is string && request.resource.data.diagnostico.size() >= 5
+        && request.resource.data.fotos is list && request.resource.data.fotos.size() == 0
+        && request.resource.data.creadoPor == request.auth.uid
+        && request.resource.data.creadoEn == request.time;
+
+      allow update: if esAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['fotos'])
+        && request.resource.data.fotos is list
+        && request.resource.data.fotos.size() <= 10;
+
+      allow delete: if esAdmin();
+    }
+
+    // ---------- Seguimiento post-tratamiento (solo Administrador) ----------
+    match /seguimientos/{seguimientoId} {
+      allow read: if esAdmin();
+
+      allow create: if esAdmin()
+        && request.resource.data.keys().hasOnly(['paciente', 'procedimiento', 'fechaProcedimiento',
+                                                 'diasParaControl', 'estado', 'creadoPor', 'creadoEn'])
+        && request.resource.data.paciente is string && request.resource.data.paciente.size() >= 2
+        && request.resource.data.procedimiento is string && request.resource.data.procedimiento.size() >= 3
+        && fechaValida(request.resource.data.fechaProcedimiento)
+        && request.resource.data.diasParaControl is int
+        && request.resource.data.diasParaControl >= 1 && request.resource.data.diasParaControl <= 365
+        && request.resource.data.estado == 'PENDIENTE'
+        && request.resource.data.creadoPor == request.auth.uid
+        && request.resource.data.creadoEn == request.time;
+
+      allow update: if esAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['estado', 'completadoEn'])
+        && request.resource.data.estado == 'COMPLETADO';
+
+      allow delete: if esAdmin();
+    }
   }
 }

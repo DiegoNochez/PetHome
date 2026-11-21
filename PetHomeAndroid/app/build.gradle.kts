@@ -1,4 +1,11 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import java.util.Properties
+
+// Datos de Cloudinary leídos de local.properties (no se sube al repositorio).
+val propiedadesLocales = Properties().apply {
+    val archivo = rootProject.file("local.properties")
+    if (archivo.exists()) archivo.inputStream().use { load(it) }
+}
 
 plugins {
     alias(libs.plugins.android.application)
@@ -18,6 +25,10 @@ android {
         targetSdk = 35
         versionCode = 2
         versionName = "2.0-foro2"
+
+        // Foro 2: fotos clínicas en Cloudinary (subida sin firma con upload preset).
+        buildConfigField("String", "CLOUDINARY_CLOUD_NAME", "\"${propiedadesLocales.getProperty("cloudinary.cloudName", "")}\"")
+        buildConfigField("String", "CLOUDINARY_UPLOAD_PRESET", "\"${propiedadesLocales.getProperty("cloudinary.uploadPreset", "")}\"")
     }
 
     buildTypes {
@@ -32,6 +43,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 

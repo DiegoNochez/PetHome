@@ -26,6 +26,7 @@ import androidx.compose.material.icons.filled.Pets
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -43,6 +44,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -51,6 +53,7 @@ import com.premiercoders.pethome.controlador.PetHomeViewModel
 import com.premiercoders.pethome.modelo.EvidenciaClinica
 import com.premiercoders.pethome.util.Formato
 import com.premiercoders.pethome.util.Validador
+import com.premiercoders.pethome.vista.componentes.AvisoSincronizacion
 import com.premiercoders.pethome.vista.componentes.CampoTexto
 import com.premiercoders.pethome.vista.componentes.DialogoConfirmacion
 import com.premiercoders.pethome.vista.componentes.EstadoVacio
@@ -63,26 +66,30 @@ import java.time.LocalDate
  * Evidencia clínica: reemplaza el envío de fotos por WhatsApp. Cada registro
  * del paciente recibe sus fotos con el selector de fotos del sistema
  * (Photo Picker), que no necesita pedir permisos de almacenamiento.
+ *
+ * Foro 2: los registros se guardan en Firestore y cada foto se sube a
+ * Cloudinary; la tarjeta muestra la imagen desde su URL en la nube.
  */
 @Composable
 fun PantallaEvidenciaClinica(vm: PetHomeViewModel, onVolver: () -> Unit) {
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+    val contexto = LocalContext.current
+    val avisar: (String) -> Unit = { texto -> scope.launch { snackbar.showSnackbar(texto) } }
 
     var paciente by rememberSaveable { mutableStateOf("") }
     var fecha by rememberSaveable { mutableStateOf(LocalDate.now().toString()) }
     var diagnostico by rememberSaveable { mutableStateOf("") }
     var errores by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
 
-    var idParaFoto by rememberSaveable { mutableStateOf<Int?>(null) }
+    var idParaFoto by rememberSaveable { mutableStateOf<String?>(null) }
     var fotoAmpliada by remember { mutableStateOf<String?>(null) }
     var evidenciaAEliminar by remember { mutableStateOf<EvidenciaClinica?>(null) }
 
     val selectorFotos = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         val id = idParaFoto
         if (uri != null && id != null) {
-            vm.adjuntarFoto(id, uri.toString())
-            scope.launch { snackbar.showSnackbar("Foto adjuntada a la evidencia #$id") }
+            vm.adjuntarFoto(id, contexto.contentResolver, uri, avisar)
         }
         idParaFoto = null
     }
@@ -94,9 +101,11 @@ fun PantallaEvidenciaClinica(vm: PetHomeViewModel, onVolver: () -> Unit) {
         Validador.textoObligatorio(diagnostico, "El diagnóstico", minimo = 5)?.let { nuevos["diagnostico"] = it }
         errores = nuevos
         if (nuevos.isNotEmpty()) return
-        val evidencia = vm.crearEvidencia(paciente, Validador.aFecha(fecha)!!, diagnostico)
-        paciente = ""; diagnostico = ""
-        scope.launch { snackbar.showSnackbar("Evidencia #${evidencia.id} creada. Ya puedes adjuntarle fotos.") }
+        vm.crearEvidencia(
+            paciente, Validador.aFecha(fecha)!!, diagnostico,
+            onExito = { paciente = ""; diagnostico = "" },
+            onResultado = avisar
+        )
     }
 
     PantallaBase(titulo = "Evidencia Clínica", onVolver = onVolver, snackbarHostState = snackbar) { padding ->
@@ -105,6 +114,7 @@ fun PantallaEvidenciaClinica(vm: PetHomeViewModel, onVolver: () -> Unit) {
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            item { AvisoSincronizacion(vm.errorSincronizacion) }
             item {
                 Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -112,19 +122,28 @@ fun PantallaEvidenciaClinica(vm: PetHomeViewModel, onVolver: () -> Unit) {
                         CampoTexto(paciente, { paciente = it; errores = errores - "paciente" }, "Paciente (nombre y especie)", error = errores["paciente"], icono = Icons.Filled.Pets)
                         CampoTexto(fecha, { fecha = it; errores = errores - "fecha" }, "Fecha (AAAA-MM-DD)", error = errores["fecha"], icono = Icons.Filled.CalendarMonth)
                         CampoTexto(diagnostico, { diagnostico = it; errores = errores - "diagnostico" }, "Diagnóstico / observaciones", error = errores["diagnostico"], unaLinea = false)
-                        Button(onClick = { registrar() }, modifier = Modifier.fillMaxWidth().padding(top = 8.dp).height(48.dp)) {
+                        Button(onClick = { registrar() }, enabled = !vm.guardando, modifier = Modifier.fillMaxWidth().padding(top = 8.dp).height(48.dp)) {
                             Text("Crear registro")
                         }
                     }
                 }
             }
-            item { TituloSeccion("Registros (${vm.evidencias.size})") }
+            item {
+                Column {
+                    TituloSeccion("Registros (${vm.evidencias.size})")
+                    if (vm.subiendoFoto) {
+                        Text("Subiendo foto a la nube...", style = MaterialTheme.typography.bodySmall)
+                        LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 4.dp))
+                    }
+                }
+            }
             if (vm.evidencias.isEmpty()) {
                 item { EstadoVacio("Aún no hay evidencias clínicas") }
             }
             items(vm.evidencias, key = { it.id }) { evidencia ->
                 TarjetaEvidencia(
                     evidencia = evidencia,
+                    subiendo = vm.subiendoFoto,
                     onAdjuntar = {
                         idParaFoto = evidencia.id
                         selectorFotos.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
@@ -148,10 +167,10 @@ fun PantallaEvidenciaClinica(vm: PetHomeViewModel, onVolver: () -> Unit) {
     }
     evidenciaAEliminar?.let { evidencia ->
         DialogoConfirmacion(
-            titulo = "Eliminar evidencia #${evidencia.id}",
+            titulo = "Eliminar evidencia",
             mensaje = "Se eliminará el registro de ${evidencia.paciente} y sus ${evidencia.fotosAdjuntas.size} foto(s).",
             textoConfirmar = "Eliminar",
-            onConfirmar = { vm.eliminarEvidencia(evidencia.id); evidenciaAEliminar = null },
+            onConfirmar = { vm.eliminarEvidencia(evidencia.id, avisar); evidenciaAEliminar = null },
             onCancelar = { evidenciaAEliminar = null }
         )
     }
@@ -160,6 +179,7 @@ fun PantallaEvidenciaClinica(vm: PetHomeViewModel, onVolver: () -> Unit) {
 @Composable
 private fun TarjetaEvidencia(
     evidencia: EvidenciaClinica,
+    subiendo: Boolean,
     onAdjuntar: () -> Unit,
     onVerFoto: (String) -> Unit,
     onEliminar: () -> Unit
@@ -170,7 +190,7 @@ private fun TarjetaEvidencia(
                 Column(Modifier.weight(1f)) {
                     Text(evidencia.paciente, fontWeight = FontWeight.SemiBold)
                     Text(
-                        "#${evidencia.id} · ${Formato.fecha(evidencia.fecha)} · ${evidencia.fotosAdjuntas.size} foto(s)",
+                        "${Formato.fecha(evidencia.fecha)} · ${evidencia.fotosAdjuntas.size} foto(s)",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -193,7 +213,7 @@ private fun TarjetaEvidencia(
                     }
                 }
             }
-            OutlinedButton(onClick = onAdjuntar) {
+            OutlinedButton(onClick = onAdjuntar, enabled = !subiendo && evidencia.fotosAdjuntas.size < EvidenciaClinica.MAXIMO_FOTOS) {
                 Icon(Icons.Filled.AddAPhoto, contentDescription = null)
                 Text("  Adjuntar foto")
             }

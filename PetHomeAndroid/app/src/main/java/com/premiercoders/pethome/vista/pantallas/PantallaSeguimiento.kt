@@ -47,6 +47,7 @@ import com.premiercoders.pethome.modelo.EstadoSeguimiento
 import com.premiercoders.pethome.modelo.Seguimiento
 import com.premiercoders.pethome.util.Formato
 import com.premiercoders.pethome.util.Validador
+import com.premiercoders.pethome.vista.componentes.AvisoSincronizacion
 import com.premiercoders.pethome.vista.componentes.CampoTexto
 import com.premiercoders.pethome.vista.componentes.DialogoConfirmacion
 import com.premiercoders.pethome.vista.componentes.EstadoVacio
@@ -67,11 +68,15 @@ private enum class FiltroSeguimiento(val etiqueta: String) {
  * Seguimiento post-tratamiento: calcula la fecha del control mientras se
  * escribe y resalta en rojo a los pacientes que no regresaron (el caso real
  * de la entrevista con Pet Home).
+ *
+ * Foro 2: los seguimientos se guardan en Firestore y la lista se actualiza
+ * en tiempo real.
  */
 @Composable
 fun PantallaSeguimiento(vm: PetHomeViewModel, onVolver: () -> Unit) {
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+    val avisar: (String) -> Unit = { texto -> scope.launch { snackbar.showSnackbar(texto) } }
 
     var paciente by rememberSaveable { mutableStateOf("") }
     var procedimiento by rememberSaveable { mutableStateOf("") }
@@ -93,9 +98,11 @@ fun PantallaSeguimiento(vm: PetHomeViewModel, onVolver: () -> Unit) {
         Validador.entero(dias, "Los días", 1, 365)?.let { nuevos["dias"] = it }
         errores = nuevos
         if (nuevos.isNotEmpty()) return
-        val nuevo = vm.crearSeguimiento(paciente, procedimiento, fechaPrevia!!, diasPrevios!!)
-        paciente = ""; procedimiento = ""
-        scope.launch { snackbar.showSnackbar("Control de ${nuevo.paciente} programado para el ${Formato.fecha(nuevo.fechaControl)}") }
+        vm.crearSeguimiento(
+            paciente, procedimiento, fechaPrevia!!, diasPrevios!!,
+            onExito = { paciente = ""; procedimiento = "" },
+            onResultado = avisar
+        )
     }
 
     val lista = when (filtro) {
@@ -111,6 +118,7 @@ fun PantallaSeguimiento(vm: PetHomeViewModel, onVolver: () -> Unit) {
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            item { AvisoSincronizacion(vm.errorSincronizacion) }
             item {
                 Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -134,7 +142,7 @@ fun PantallaSeguimiento(vm: PetHomeViewModel, onVolver: () -> Unit) {
                             resaltar = true,
                             color = MaterialTheme.colorScheme.primary
                         )
-                        Button(onClick = { registrar() }, modifier = Modifier.fillMaxWidth().padding(top = 8.dp).height(48.dp)) {
+                        Button(onClick = { registrar() }, enabled = !vm.guardando, modifier = Modifier.fillMaxWidth().padding(top = 8.dp).height(48.dp)) {
                             Text("Programar seguimiento")
                         }
                     }
@@ -156,10 +164,7 @@ fun PantallaSeguimiento(vm: PetHomeViewModel, onVolver: () -> Unit) {
             items(lista, key = { it.id }) { seguimiento ->
                 TarjetaSeguimiento(
                     seguimiento,
-                    onCompletar = {
-                        vm.completarSeguimiento(seguimiento.id)
-                        scope.launch { snackbar.showSnackbar("${seguimiento.paciente}: control completado") }
-                    },
+                    onCompletar = { vm.completarSeguimiento(seguimiento.id, avisar) },
                     onEliminar = { seguimientoAEliminar = seguimiento }
                 )
             }
@@ -171,7 +176,7 @@ fun PantallaSeguimiento(vm: PetHomeViewModel, onVolver: () -> Unit) {
             titulo = "Eliminar seguimiento",
             mensaje = "Se eliminará el seguimiento de ${s.paciente} (${s.procedimiento}).",
             textoConfirmar = "Eliminar",
-            onConfirmar = { vm.eliminarSeguimiento(s.id); seguimientoAEliminar = null },
+            onConfirmar = { vm.eliminarSeguimiento(s.id, avisar); seguimientoAEliminar = null },
             onCancelar = { seguimientoAEliminar = null }
         )
     }

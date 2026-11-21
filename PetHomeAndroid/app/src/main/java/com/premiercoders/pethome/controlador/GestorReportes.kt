@@ -25,7 +25,8 @@ class GestorReportes(
             ingresoCreditos = gestorCredito.ingresoTotal(),
             ivaCreditos = gestorCredito.ivaTotal(),
             seguimientosPendientes = gestorSeguimiento.pendientes().size,
-            seguimientosVencidos = gestorSeguimiento.vencidos().size
+            seguimientosVencidos = gestorSeguimiento.vencidos().size,
+            ingresosPorDia = gestorCaja.ingresosPorDia()
         )
     }
 }
