@@ -130,6 +130,7 @@ class PetHomeViewModel : ViewModel() {
         operacion: String,
         onResultado: (String) -> Unit,
         onExito: () -> Unit = {},
+        requiereConexion: Boolean = false,
         bloque: suspend (Usuario) -> String
     ) {
         val usuario = usuarioActual ?: return onResultado("Tu sesión expiró. Vuelve a iniciar sesión")
@@ -143,7 +144,7 @@ class PetHomeViewModel : ViewModel() {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                onResultado(ErroresFirestore.mensaje(operacion, e))
+                onResultado(ErroresFirestore.mensaje(operacion, e, requiereConexion))
             } finally {
                 guardando = false
             }
@@ -228,7 +229,7 @@ class PetHomeViewModel : ViewModel() {
     fun generarCredito(
         fecha: LocalDate, cliente: String, nit: String, nrc: String, servicio: String, subtotal: Double,
         onExito: () -> Unit, onResultado: (String) -> Unit
-    ) = guardar("emitir el crédito fiscal", onResultado, onExito) { usuario ->
+    ) = guardar("emitir el crédito fiscal", onResultado, onExito, requiereConexion = true) { usuario ->
         val numero = gestorCredito.generar(fecha, cliente, nit, nrc, servicio, subtotal, usuario.uid)
         "$numero emitido"
     }
