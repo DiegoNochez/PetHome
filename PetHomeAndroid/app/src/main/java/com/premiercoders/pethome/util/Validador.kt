@@ -19,8 +19,27 @@ object Validador {
 
     private val regexCorreo = Regex("^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$")
 
+    /** "La tarjeta" es femenino; "Los días" es plural. Sirve para concordar los mensajes. */
+    private fun esFemenino(campo: String) = campo.startsWith("La ") || campo.startsWith("Las ")
+
+    private fun esPlural(campo: String) = campo.startsWith("Los ") || campo.startsWith("Las ")
+
+    /** "El efectivo es obligatorio", "La tarjeta es obligatoria", "Los días son obligatorios". */
+    private fun obligatorio(campo: String): String {
+        val terminacion = (if (esFemenino(campo)) "a" else "o") + (if (esPlural(campo)) "s" else "")
+        val verbo = if (esPlural(campo)) "son" else "es"
+        return "$campo $verbo obligatori$terminacion"
+    }
+
+    /** "El efectivo no puede ser negativo", "La tarjeta no puede ser negativa". */
+    private fun noNegativo(campo: String): String {
+        val terminacion = (if (esFemenino(campo)) "a" else "o") + (if (esPlural(campo)) "s" else "")
+        val verbo = if (esPlural(campo)) "pueden" else "puede"
+        return "$campo no $verbo ser negativ$terminacion"
+    }
+
     fun textoObligatorio(valor: String, campo: String, minimo: Int = 2): String? = when {
-        valor.isBlank() -> "$campo es obligatorio"
+        valor.isBlank() -> obligatorio(campo)
         valor.trim().length < minimo -> "$campo debe tener al menos $minimo caracteres"
         else -> null
     }
@@ -60,11 +79,11 @@ object Validador {
     fun aNumero(valor: String): Double? = valor.trim().replace(',', '.').toDoubleOrNull()
 
     fun monto(valor: String, campo: String, permitirCero: Boolean = true): String? {
-        if (valor.isBlank()) return "$campo es obligatorio"
+        if (valor.isBlank()) return obligatorio(campo)
         val numero = aNumero(valor) ?: return "Ingresa un número válido (ej. 25.50)"
         val decimales = valor.trim().replace(',', '.').substringAfter('.', "")
         return when {
-            numero < 0 -> "$campo no puede ser negativo"
+            numero < 0 -> noNegativo(campo)
             !permitirCero && numero == 0.0 -> "$campo debe ser mayor a 0"
             decimales.length > 2 -> "Usa máximo 2 decimales"
             numero > 1_000_000 -> "El monto es demasiado alto"
@@ -73,7 +92,7 @@ object Validador {
     }
 
     fun entero(valor: String, campo: String, minimo: Int, maximo: Int): String? {
-        if (valor.isBlank()) return "$campo es obligatorio"
+        if (valor.isBlank()) return obligatorio(campo)
         val numero = valor.trim().toIntOrNull() ?: return "Ingresa un número entero"
         return if (numero < minimo || numero > maximo) "Debe estar entre $minimo y $maximo" else null
     }

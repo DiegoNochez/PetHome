@@ -46,6 +46,7 @@ import com.premiercoders.pethome.vista.tema.AmbarAviso
 import com.premiercoders.pethome.vista.tema.RojoAlerta
 import com.premiercoders.pethome.vista.tema.Teal
 import com.premiercoders.pethome.vista.tema.TealOscuro
+import kotlin.math.roundToInt
 
 /**
  * Reportes financieros: solo lectura, calculados por GestorReportes.
@@ -129,7 +130,7 @@ private fun BarraMetodo(nombre: String, monto: Double, total: Double, color: Col
     Column {
         Row(Modifier.fillMaxWidth()) {
             Text(nombre, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
-            Text("${Formato.dinero(monto)}  (${(proporcion * 100).toInt()} %)", style = MaterialTheme.typography.bodyMedium)
+            Text("${Formato.dinero(monto)}  (${(proporcion * 100).roundToInt()} %)", style = MaterialTheme.typography.bodyMedium)
         }
         LinearProgressIndicator(
             progress = { proporcion },

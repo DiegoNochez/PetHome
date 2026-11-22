@@ -102,10 +102,13 @@ fun PantallaCreditoFiscal(vm: PetHomeViewModel, onVolver: () -> Unit) {
         if (nuevos.isNotEmpty()) return
 
         val total = Formato.dinero(subtotalNumero + iva)
+        // El total solo se agrega al mensaje de éxito ("CCF-2026-0006 emitido por $22.60"),
+        // no a los de error.
+        var emitido = false
         vm.generarCredito(
             Validador.aFecha(fecha)!!, cliente, nit, nrc, servicio, subtotalNumero,
-            onExito = { cliente = ""; nit = ""; nrc = ""; servicio = ""; subtotal = "" }
-        ) { mensaje -> avisar("$mensaje por $total") }
+            onExito = { emitido = true; cliente = ""; nit = ""; nrc = ""; servicio = ""; subtotal = "" }
+        ) { mensaje -> avisar(if (emitido) "$mensaje por $total" else mensaje) }
     }
 
     val lista = vm.creditos
