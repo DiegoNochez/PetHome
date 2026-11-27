@@ -49,6 +49,17 @@ de la clínica.
 Toda cuenta nueva empieza como Recepcionista. El rol de administrador solo se asigna
 desde la consola de Firebase, y las reglas de seguridad impiden que la app lo cambie.
 
+## Mockups
+
+Diseño de las pantallas hecho en la Etapa 1, antes de programar la app, con la paleta
+teal (#129C8C / #0D7C70) que después se usó en Jetpack Compose.
+
+| Inicio de sesión | Panel principal | Crédito fiscal |
+|:---:|:---:|:---:|
+| <img src="docs/mockups/01-login.png" width="220" alt="Mockup de inicio de sesión"> | <img src="docs/mockups/02-panel.png" width="220" alt="Mockup del panel principal"> | <img src="docs/mockups/03-credito-fiscal.png" width="220" alt="Mockup de crédito fiscal"> |
+| **Cierre de caja** | **Evidencia clínica** | **Reportes financieros** |
+| <img src="docs/mockups/04-cierre-caja.png" width="220" alt="Mockup de cierre de caja"> | <img src="docs/mockups/05-evidencia-clinica.png" width="220" alt="Mockup de evidencia clínica"> | <img src="docs/mockups/06-reportes.png" width="220" alt="Mockup de reportes financieros"> |
+
 ## Tecnologías
 
 | Área | Herramienta |
@@ -112,6 +123,26 @@ La guía detallada de Firebase, Cloudinary y roles está en
 | [`PetHomeAndroid/`](PetHomeAndroid/) | App Android final (Etapa 3) |
 | [`src/`](src/) | Versión de consola en Kotlin (Etapa 2), se abre con IntelliJ IDEA desde la raíz |
 | [`docs/`](docs/) | Documentos de las entregas |
+
+## Entregas por etapa
+
+| Etapa | Contenido | Enlaces |
+|---|---|---|
+| Etapa 1 — Análisis y planificación | Organización, problema, requerimientos y mockups | Documento entregado en Aula Digital |
+| Etapa 2 — Desarrollo base | Lógica en Kotlin (consola) con POO, colecciones y validación | Carpeta [`src/`](src/) |
+| Etapa 3 — Foro 1 | App Android con Jetpack Compose | [Video](https://www.youtube.com/watch?v=x_vHNvn7KDI) · [Documento APA 7](docs/PetHome_Foro1_JetpackCompose_Etapa3.pdf) |
+| Etapa 3 — Foro 2 | Firebase Authentication, Firestore y módulos secundarios | [Video y documento](https://drive.google.com/drive/folders/1B4b_hDTzGH_dvvErGDaYmTtByyD473L0?usp=sharing) |
+| Entrega final | App completa, mockups, licencia y README | Este repositorio |
+
+## Equipo PremierCoders
+
+| Integrante | Carnet | GitHub | Rama |
+|---|---|---|---|
+| Diego Carlos Nochez Gallardo | NG182027 | [@DiegoNochez](https://github.com/DiegoNochez) | `rama-diego` |
+| Nelson Elías Henríquez Chávez | HC252054 | [@NelsonHC722](https://github.com/NelsonHC722) | `rama-nelson` |
+| Jimmy Royer Melendez Pineda | MP251278 | [@jimmmyrmp](https://github.com/jimmmyrmp) | `rama-jimmy` |
+
+Cada integrante trabaja en su rama y sus cambios llegan a `main` por Pull Request.
 
 ## Licencia
 
