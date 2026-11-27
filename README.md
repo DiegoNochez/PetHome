@@ -1,181 +1,121 @@
-## Entrega Foro 2 (Etapa 3): Firebase y módulos secundarios
+# Pet Home — App de gestión interna para un centro veterinario
 
-- **Video demostración y documento de investigación (APA 7):** [carpeta en Google Drive](https://drive.google.com/drive/folders/1B4b_hDTzGH_dvvErGDaYmTtByyD473L0?usp=sharing)
-- **Código fuente de la app Android:** [PetHomeAndroid/](PetHomeAndroid/)
-- **Configuración de Firebase y Cloudinary:** ver [PetHomeAndroid/README.md](PetHomeAndroid/README.md)
-- **Pull Requests del foro:** #8 (autenticación), #9 (caja y créditos), #10 (evidencia, seguimiento y gráfica)
+[![Licencia: CC BY-NC-SA 4.0](https://img.shields.io/badge/Licencia-CC%20BY--NC--SA%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc-sa/4.0/deed.es)
 
---------------------------------------------------------------------------------------------------------------------------
+**Proyecto de Cátedra DSM941 · Universidad Don Bosco · Equipo PremierCoders (T-036) · Ciclo II 2026**
 
-## Entrega Foro 1 (Etapa 3)
+Aplicación Android hecha en Kotlin con Jetpack Compose y Firebase para el personal de
+**Pet Home, Centro Médico Veterinario** (San Salvador), una clínica real con 10 años de
+operación, 15 empleados y entre 30 y 50 pacientes por semana. La app **no es para
+clientes**: la usan la recepción y los veterinarios dentro de la clínica.
 
-- **Video demostración:** [ver en YouTube](https://www.youtube.com/watch?v=x_vHNvn7KDI)
-- **Documento de investigación (APA 7):** [PetHome_Foro1_JetpackCompose_APA7.pdf](docs/PetHome_Foro1_JetpackCompose_APA7.pdf)
-- **Código fuente de la app Android:** [PetHomeAndroid/](PetHomeAndroid/)
+---
 
-# Pet Home — Etapa 2: Desarrollo Base del Proyecto
+## El problema
 
-**Proyecto de Cátedra DSM941 · Equipo PremierCoders**
+Pet Home ya usa **VetPraxis** para la agenda, el expediente clínico y los recordatorios
+de vacunación, y funciona bien. En la entrevista con el personal (Etapa 1) aparecieron
+tres tareas que quedan fuera de ese sistema y se hacen a mano:
 
-Núcleo funcional en Kotlin (modo consola) del sistema interno de personal para
-**Pet Home, Centro Médico Veterinario** (organización real, ver el documento
-de la Etapa 1). Esta app **no** es para clientes: es una herramienta de uso
-exclusivo del personal (Administrador/Veterinario y Recepcionista/Cajero)
-para resolver los tres problemas reales detectados en la entrevista de la
-Etapa 1: el cierre de caja y los créditos fiscales manuales, la evidencia
-clínica dispersa en WhatsApp, y el seguimiento post-tratamiento inconsistente.
+1. **Cierre de caja y créditos fiscales en Excel.** No se calcula el IVA (13 %) de forma
+   automática, la numeración de los créditos se lleva a mano y no se concilia el total
+   del día contra el efectivo contado.
+2. **Evidencia clínica dispersa.** Las fotos de heridas y exámenes se envían al WhatsApp
+   personal de la veterinaria y no quedan ligadas al paciente.
+3. **Seguimiento post-tratamiento inconsistente.** Hay pacientes que no vuelven a su
+   control (por ejemplo, después de una profilaxis dental) y nadie se entera a tiempo.
 
-## Módulos implementados
+## La solución
 
-| # | Módulo | Lógica de negocio real |
-|---|--------|-------------------------|
-| 1 | Cierre de Caja | Calcula el total esperado (efectivo + tarjeta + transferencia) y lo concilia contra el conteo físico, mostrando el sobrante/faltante exacto. Incluye además un listado filtrado de cierres con faltante. |
-| 2 | Créditos Fiscales | Asigna numeración correlativa automática (`CCF-AAAA-####`) y calcula el IVA (13%, El Salvador) sobre el subtotal. Incluye además un listado filtrado de créditos anulados. |
-| 3 | Evidencia Clínica | Adjunta fotografías al registro del paciente, sustituyendo el envío disperso por WhatsApp. |
-| 4 | Seguimiento Post-tratamiento | Calcula la fecha del próximo control (fecha del procedimiento + días indicados), mantiene un estado explícito Pendiente/Completado, y permite consultar los seguimientos próximos a vencer en los siguientes 7 días. |
-| 5 | Reportes Financieros | Resume ingresos por método de pago, créditos fiscales emitidos, ingreso total y seguimientos pendientes. |
+Pet Home complementa a VetPraxis (no lo reemplaza) con cinco módulos que trabajan sobre
+datos en la nube, compartidos y actualizados en tiempo real entre todos los dispositivos
+de la clínica.
 
-## Estructura del proyecto (arquitectura MVC + Gradle)
-
-El proyecto usa Gradle con Kotlin DSL (requerido para compilar correctamente
-dentro de IntelliJ IDEA):
-
-```
-PetHomeApp/
-├── build.gradle.kts
-├── settings.gradle.kts
-├── gradlew / gradlew.bat
-└── src/main/kotlin/
-    ├── Main.kt                        # Punto de entrada + menús por rol
-    └── pethome/
-        ├── modelo/                    # Modelo: clases de datos del dominio
-        │   ├── Usuario.kt             # Clase abstracta + herencia (Administrador, Recepcionista)
-        │   ├── CierreCaja.kt
-        │   ├── CreditoFiscal.kt
-        │   ├── EvidenciaClinica.kt
-        │   ├── Seguimiento.kt
-        │   └── Enums.kt               # MetodoPago, EstadoSeguimiento
-        ├── controlador/                # Controlador: lógica de negocio y validación
-        │   ├── GestorCierreCaja.kt
-        │   ├── GestorCreditoFiscal.kt
-        │   ├── GestorEvidenciaClinica.kt
-        │   ├── GestorSeguimiento.kt
-        │   └── GestorReportes.kt
-        ├── vista/
-        │   └── Consola.kt             # Vista: menús e inicio de sesión
-        └── util/
-            ├── Resumible.kt           # Interfaz implementada por las entidades del modelo
-            ├── Validador.kt           # Validación de entradas + reintentos
-            ├── LoggerErrores.kt       # Log de errores en archivo de texto (errores.log)
-            └── DatosInvalidosException.kt
-```
-
-Esta misma separación Vista/Controlador/Modelo es la que se documentó en la
-arquitectura de la Etapa 1, y es la base sobre la que se migrará a Jetpack
-Compose + Firebase en la Etapa 3.
-
-## Cómo compilar y ejecutar
-
-**Opción recomendada — IntelliJ IDEA:**
-
-1. Abrir la carpeta `PetHomeApp` como proyecto (IntelliJ detecta Gradle
-   automáticamente y descarga las dependencias la primera vez).
-2. Esperar a que termine el proceso de importación de Gradle (barra de
-   progreso inferior).
-3. Abrir `Main.kt` y presionar el botón ▶ verde junto a `fun main()`.
-
-**Opción por terminal (dentro de la carpeta `PetHomeApp`):**
-
-```bash
-./gradlew run
-```
-
-En Windows (Git Bash / PowerShell), si `./gradlew` no se ejecuta directo:
-
-```bash
-gradlew.bat run
-```
-
-Al ejecutarse, el programa pide iniciar sesión eligiendo un rol
-(Administrador/Veterinario o Recepcionista/Cajero); el menú que se muestra
-después cambia según el rol, reflejando el control de acceso diferenciado
-definido en la Etapa 1.
-
-Cualquier error de validación (fecha, número, texto o correo mal ingresado)
-se reintenta en consola y además se registra con fecha y hora en
-`errores.log`, generado en el mismo directorio donde se ejecuta el programa.
-
-## Requerimientos funcionales de la Etapa 2 — dónde están
-
-1. **Módulo de gestión principal (CRUD)** → `GestorCreditoFiscal` y
-   `GestorCierreCaja` (crear, listar, actualizar, eliminar/anular).
-2. **Módulo de procesamiento o cálculo** → cálculo de IVA (13%) en
-   `CreditoFiscal`, conciliación de caja en `CierreCaja`, y fecha de
-   seguimiento calculada en `Seguimiento`.
-3. **Visualización de resultados en consola** → todas las opciones de
-   "Listar..." de cada menú.
-4. **Generación de reporte o resumen del sistema** → opción 12 del menú de
-   Administrador, implementada en `GestorReportes`.
-5. **Actualización dinámica de datos durante la ejecución** → el menú
-   corre en un bucle mientras el programa está activo: cualquier registro
-   creado, actualizado, completado o anulado se refleja de inmediato en los
-   listados y en el reporte, sin reiniciar el programa.
-
-Estos 5 puntos fueron verificados manualmente ejecutando el flujo completo
-como Administrador y como Recepcionista antes de la entrega.
-
-## Trabajo colaborativo en GitHub
-
-Cada integrante del equipo trabajó en su propia rama, con al menos una
-funcionalidad real e independiente, luego fusionada a `main` vía Pull Request:
-
-| Integrante | Rama | Aporte |
-|---|---|---|
-| Diego | `main` | Estructura base del proyecto (5 módulos), migración a Gradle |
-| Nelson | `rama-nelson` | Validación de formato de correo electrónico al iniciar sesión; consulta de seguimientos próximos a vencer (7 días) |
-| Jimmy | `rama-jimmy` | Listado de cierres de caja con faltante; listado de créditos fiscales anulados |
-
-Flujo usado por cada integrante:
-
-```bash
-git checkout main
-git pull
-git checkout -b rama-nombre-integrante
-# ... hacer cambios y probar en IntelliJ ...
-git add .
-git commit -m "Descripción clara del cambio"
-git push -u origin rama-nombre-integrante
-# Luego: abrir un Pull Request en GitHub hacia main y fusionarlo
-```
-
-Todos los integrantes del equipo PremierCoders aparecen como colaboradores
-del repositorio, con su propia rama y al menos un commit propio.
-
-## Próximos pasos (Etapa 3)
-
-- Migrar esta lógica a una app Android con Jetpack Compose.
-- Reemplazar las listas en memoria por Firebase Authentication + Firestore.
-- Implementar la interfaz gráfica basada en los mockups de la Etapa 1.
-## Etapa 3 — Foro 1: App Android con Jetpack Compose
-
-La lógica de esta consola se migró a una aplicación Android que está en la
-carpeta [`PetHomeAndroid/`](PetHomeAndroid/README.md). Se conservó la
-arquitectura MVC: el modelo y los gestores de la Etapa 2 se reutilizaron y la
-consola se reemplazó por pantallas en Jetpack Compose.
-
-| Requisito del Foro 1 | Cómo se cumple |
+| Módulo | Qué resuelve |
 |---|---|
-| Login / registro funcional | Pantallas de inicio de sesión y creación de cuenta con dos roles |
-| Módulo principal en Compose | Panel principal + Cierre de Caja, Créditos Fiscales, Evidencia Clínica, Seguimiento y Reportes |
-| Navegación entre pantallas | Navigation Compose con rutas protegidas por sesión y por rol |
-| Validación de formularios | Mensaje de error debajo de cada campo (correo, contraseña, montos, fechas) |
+| **Cierre de Caja** | Suma efectivo, tarjeta y transferencia, lo compara con el conteo físico y marca el sobrante o faltante. Historial filtrable por día, semana y mes. |
+| **Créditos Fiscales** | Calcula el IVA del 13 %, pide NIT/NRC con formato válido y asigna un correlativo `CCF-AAAA-####` sin saltos ni repetidos. Un crédito emitido no se borra: solo se anula. |
+| **Evidencia Clínica** | Registra el diagnóstico del paciente y le adjunta fotos que se suben a la nube (Cloudinary). |
+| **Seguimiento** | Calcula la fecha del control (procedimiento + días) y avisa qué pacientes no han regresado. |
+| **Reportes** | Total en caja, ingresos por método de pago, ingresos de los últimos 7 días, IVA generado, faltantes y pacientes pendientes. |
 
-### Cómo abrir cada parte del repositorio
+### Roles
 
-| Proyecto | Carpeta que se abre | Herramienta |
-|---|---|---|
-| Etapa 2 (consola) | raíz del repositorio | IntelliJ IDEA |
-| Etapa 3 (Android) | `PetHomeAndroid/` | Android Studio |
+| Rol | Acceso |
+|---|---|
+| **Administrador / Veterinario (MVZ)** | Los cinco módulos. Es el único que puede eliminar cierres y anular créditos. |
+| **Recepcionista / Cajero** | Cierre de Caja y Créditos Fiscales. No ve datos clínicos. |
 
-> Importante: en Android Studio se debe abrir la carpeta `PetHomeAndroid`, no
-> la raíz, porque cada proyecto tiene su propio `settings.gradle.kts`.
+Toda cuenta nueva empieza como Recepcionista. El rol de administrador solo se asigna
+desde la consola de Firebase, y las reglas de seguridad impiden que la app lo cambie.
+
+## Tecnologías
+
+| Área | Herramienta |
+|---|---|
+| Lenguaje | Kotlin 2.0.21 |
+| Interfaz | Jetpack Compose (Material 3, BOM 2024.12.01) y Navigation Compose |
+| Autenticación | Firebase Authentication: correo/contraseña y Google (Credential Manager) |
+| Base de datos | Cloud Firestore con listeners en tiempo real, transacciones y reglas de seguridad |
+| Fotos | Cloudinary (subida sin firma) y Coil para mostrarlas |
+| Arquitectura | MVC con `ViewModel` |
+| Compilación | Android Gradle Plugin 8.7.3, Gradle 8.11.1, minSdk 26, targetSdk 35 |
+
+## Arquitectura
+
+```
+PetHomeAndroid/app/src/main/java/com/premiercoders/pethome/
+├── modelo/        # Modelo: Usuario, CierreCaja, CreditoFiscal, EvidenciaClinica, Seguimiento
+├── controlador/   # Controlador: un Gestor por módulo (Firestore) + PetHomeViewModel
+├── navegacion/    # Rutas protegidas por sesión y por rol
+├── util/          # Validador, mensajes de error de Firestore, formato y log de errores
+└── vista/         # Vista: pantallas y componentes en Jetpack Compose
+```
+
+### Datos en Firestore
+
+| Colección | Contenido |
+|---|---|
+| `usuarios/{uid}` | Nombre, correo y rol de cada persona del personal |
+| `cierresCaja` | Montos del día, conteo físico, responsable y quién lo registró |
+| `creditosFiscales/{CCF-AAAA-####}` | Cliente, NIT, NRC, servicio, subtotal y si está anulado |
+| `contadores/creditos-AAAA` | Siguiente número del correlativo (se actualiza con una transacción) |
+| `evidencias` | Paciente, diagnóstico y URL de las fotos en Cloudinary |
+| `seguimientos` | Paciente, procedimiento, días para el control y estado |
+
+Las reglas de seguridad están en [`PetHomeAndroid/firestore.rules`](PetHomeAndroid/firestore.rules):
+cada colección valida los campos, el rol y que `creadoPor` sea el usuario que escribe.
+
+## Cómo ejecutar la app
+
+1. Clonar el repositorio y abrir **la carpeta `PetHomeAndroid`** en Android Studio
+   (no la raíz).
+2. Copiar `google-services.json` en `PetHomeAndroid/app/`. Se descarga desde Firebase
+   Console → Configuración del proyecto → Tus apps → Pet Home Android. No se sube al
+   repositorio.
+3. Agregar en `PetHomeAndroid/local.properties` los datos de Cloudinary:
+   ```
+   cloudinary.cloudName=TU_CLOUD_NAME
+   cloudinary.uploadPreset=TU_PRESET
+   ```
+4. Para iniciar sesión con Google, registrar la huella SHA-1 de la computadora
+   (`./gradlew signingReport`) en Firebase → Tus apps → Agregar huella digital.
+5. Hacer **Gradle Sync** y presionar ▶ **Run 'app'**.
+
+La guía detallada de Firebase, Cloudinary y roles está en
+[`PetHomeAndroid/README.md`](PetHomeAndroid/README.md).
+
+## Estructura del repositorio
+
+| Carpeta | Contenido |
+|---|---|
+| [`PetHomeAndroid/`](PetHomeAndroid/) | App Android final (Etapa 3) |
+| [`src/`](src/) | Versión de consola en Kotlin (Etapa 2), se abre con IntelliJ IDEA desde la raíz |
+| [`docs/`](docs/) | Documentos de las entregas |
+
+## Licencia
+
+Este proyecto se distribuye bajo la licencia
+[Creative Commons Atribución-NoComercial-CompartirIgual 4.0 Internacional (CC BY-NC-SA 4.0)](https://creativecommons.org/licenses/by-nc-sa/4.0/deed.es).
+Se puede compartir y adaptar dando crédito al equipo PremierCoders, sin fines
+comerciales y bajo la misma licencia. El texto completo está en [`LICENSE`](LICENSE).
